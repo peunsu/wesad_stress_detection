@@ -5,6 +5,4 @@
 $ cd codes
 $ python train_pytorch.py --config config.json
 ```
-- Anomaly Detection
-
-Open `anomaly-detection.ipynb` and run all code blocks
+- Anomaly Detection: Open `anomaly-detection.ipynb` and run all code blocks
