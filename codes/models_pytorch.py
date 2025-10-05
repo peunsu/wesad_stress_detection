@@ -43,7 +43,7 @@ class VAEmodel(nn.Module):
     def _build_encoder(self):
         if self.l_win == 24:
             self._encoder_symmetric_pad = True
-            self.enc_conv1 = nn.Conv2d(self.n_channel, self.num_hidden_units // 16,
+            self.enc_conv1 = nn.Conv2d(1, self.num_hidden_units // 16,
                                        kernel_size=(3, 1),
                                        stride=(2, 1),
                                        padding=(1, 0))
@@ -56,12 +56,12 @@ class VAEmodel(nn.Module):
                                        stride=(2, 1),
                                        padding=(1, 0))
             self.enc_conv4 = nn.Conv2d(self.num_hidden_units // 4, self.num_hidden_units,
-                                       kernel_size=(4, 1),
+                                       kernel_size=(4, self.n_channel),
                                        stride=(1, 1),
                                        padding=0)
         elif self.l_win == 48:
             self._encoder_symmetric_pad = False
-            self.enc_conv1 = nn.Conv2d(self.n_channel, self.num_hidden_units // 16,
+            self.enc_conv1 = nn.Conv2d(1, self.num_hidden_units // 16,
                                        kernel_size=(3, 1),
                                        stride=(2, 1),
                                        padding=(1, 0))
@@ -74,12 +74,12 @@ class VAEmodel(nn.Module):
                                        stride=(2, 1),
                                        padding=(1, 0))
             self.enc_conv4 = nn.Conv2d(self.num_hidden_units // 4, self.num_hidden_units,
-                                       kernel_size=(6, 1),
+                                       kernel_size=(6, self.n_channel),
                                        stride=(1, 1),
                                        padding=0)
         elif self.l_win == 144:
             self._encoder_symmetric_pad = False
-            self.enc_conv1 = nn.Conv2d(self.n_channel, self.num_hidden_units // 16,
+            self.enc_conv1 = nn.Conv2d(1, self.num_hidden_units // 16,
                                        kernel_size=(3, 1),
                                        stride=(4, 1),
                                        padding=(1, 0))
@@ -92,7 +92,7 @@ class VAEmodel(nn.Module):
                                        stride=(3, 1),
                                        padding=(1, 0))
             self.enc_conv4 = nn.Conv2d(self.num_hidden_units // 4, self.num_hidden_units,
-                                       kernel_size=(3, 1),
+                                       kernel_size=(3, self.n_channel),
                                        stride=(1, 1),
                                        padding=0)
         else:
@@ -144,8 +144,8 @@ class VAEmodel(nn.Module):
     def encode(self, x):
         if x.dim() == 2:
             x = x.unsqueeze(-1)
-        x = x.view(-1, self.n_channel, self.l_win) # (B, n_channel, l_win)
-        x = x.unsqueeze(-1)  # (B, n_channel, l_win, 1)
+        x = x.view(-1, self.l_win, self.n_channel) # (B, l_win, n_channel)
+        x = x.unsqueeze(1)  # (B, 1, l_win, n_channel)
 
         if getattr(self, '_encoder_symmetric_pad', False):
             x = F.pad(x, (0, 0, 4, 4), mode='reflect')

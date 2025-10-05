@@ -12,9 +12,17 @@ class DataGenerator:
     # 데이터 셋 정규화 후, VAE, LSTM 학습에 사용할 dataset 생성
     def load_dataset(self):
         data_dir = Path('../data')
-        train_df = pd.read_csv(data_dir / 'train.csv').drop(columns=['subject_id', 'label'])
-        val_df = pd.read_csv(data_dir / 'val.csv').drop(columns=['subject_id', 'label'])
-        test_df = pd.read_csv(data_dir / 'test.csv').drop(columns=['subject_id', 'label'])
+        train_df = pd.read_csv(data_dir / 'train.csv')
+        val_df = pd.read_csv(data_dir / 'val.csv')
+        test_df = pd.read_csv(data_dir / 'test.csv')
+        
+        # subject_id, label 분리
+        train_subjects = train_df.pop('subject_id')
+        val_subjects = val_df.pop('subject_id')
+        test_subjects = test_df.pop('subject_id')
+        train_df = train_df.drop(columns=['label'])
+        val_df = val_df.drop(columns=['label'])
+        test_df = test_df.drop(columns=['label'])
         
         # 평균, 표준편차 계산하여 정규화
         train_m = train_df.mean()
@@ -23,10 +31,20 @@ class DataGenerator:
         val_df_normalized = (val_df - train_m) / train_std
         test_df_normalized = (test_df - train_m) / train_std
         
+        # subject_id별로 그룹화해서 딕셔너리 형태로 저장
         data = {
-            'training': train_df_normalized.to_numpy(),
-            'validation': val_df_normalized.to_numpy(),
-            'test': test_df_normalized.to_numpy()
+            'training': {
+                sid: group.to_numpy()
+                for sid, group in train_df_normalized.groupby(train_subjects)
+            },
+            'validation': {
+                sid: group.to_numpy()
+                for sid, group in val_df_normalized.groupby(val_subjects)
+            },
+            'test': {
+                sid: group.to_numpy()
+                for sid, group in test_df_normalized.groupby(test_subjects)
+            }
         }
 
         self._create_vae_sets(data)
@@ -35,16 +53,22 @@ class DataGenerator:
     def _create_vae_sets(self, data):
         rolling_windows_dict = {}
         for mode in ['training', 'validation', 'test']:
-            n_sample = len(data[mode])
-            n_vae = n_sample - self.config['l_win'] + 1
-            # 연속된 구간별로 데이터를 잘라 VAE 입력을 위한 빈 배열 생성 (l_win: 각 window의 timestep 개수 => hyperparameter)
-            rolling_windows = np.zeros((n_vae, self.config['l_win'], data[mode].shape[1]))
+            subject_windows = []
+            for sid, subject_data in data[mode].items():
+                n_sample = len(subject_data)
+                n_vae = n_sample - self.config['l_win'] + 1
+                if n_vae <= 0:
+                    continue
 
-            # overlap 존재! => 윈도우가 한칸씩 이동하면서 생성
-            for i in range(n_vae):
-                rolling_windows[i] = data[mode][i:i + self.config['l_win']]
+                windows = np.zeros((n_vae, self.config['l_win'], subject_data.shape[1]))
+                for i in range(n_vae):
+                    windows[i] = subject_data[i:i + self.config['l_win']]
+                subject_windows.append(windows)
 
-            rolling_windows_dict[mode] = rolling_windows
+            if subject_windows:
+                rolling_windows_dict[mode] = np.concatenate(subject_windows, axis=0)
+            else:
+                rolling_windows_dict[mode] = np.zeros((1, self.config['l_win'], list(data[mode].values())[0].shape[1]))
 
         self.train_set_vae = {'data': rolling_windows_dict['training']}
         self.val_set_vae = {'data': rolling_windows_dict['validation']}
@@ -56,33 +80,37 @@ class DataGenerator:
 
         lstm_sequences_dict = {}
         for mode in ['training', 'validation', 'test']:
-            n_sample = len(data[mode])
-            lstm_sequences = None
+            subject_sequences = []
+            for sid, subject_data in data[mode].items():
+                n_sample = len(subject_data)
+                lstm_sequences = None
 
-            for k in range(l_win):
-                # VAE는 겹치도록 sliding window 생성, LSTM은 겹치지 않는 sliding sequence 생성
-                n_not_overlap_wins = (n_sample - k) // l_win
-                n_lstm = n_not_overlap_wins - l_seq + 1
-                if n_lstm <= 0:
-                    continue
+                for k in range(l_win):
+                    n_not_overlap_wins = (n_sample - k) // l_win
+                    n_lstm = n_not_overlap_wins - l_seq + 1
+                    if n_lstm <= 0:
+                        continue
 
-                cur_seq = np.zeros((n_lstm, l_seq, l_win, data[mode].shape[1]))
-                for i in range(n_lstm):
-                    for j in range(l_seq):
-                        start = k + l_win * (j + i)
-                        end = start + l_win
-                        cur_seq[i, j] = data[mode][start:end]
+                    cur_seq = np.zeros((n_lstm, l_seq, l_win, subject_data.shape[1]))
+                    for i in range(n_lstm):
+                        for j in range(l_seq):
+                            start = k + l_win * (j + i)
+                            end = start + l_win
+                            cur_seq[i, j] = subject_data[start:end]
 
-                if lstm_sequences is None:
-                    lstm_sequences = cur_seq
-                else:
-                    lstm_sequences = np.concatenate((lstm_sequences, cur_seq), axis=0)
+                    if lstm_sequences is None:
+                        lstm_sequences = cur_seq
+                    else:
+                        lstm_sequences = np.concatenate((lstm_sequences, cur_seq), axis=0)
 
-            if lstm_sequences is None:
-                lstm_sequences = np.zeros((1, l_seq, l_win, data[mode].shape[1]))
+                if lstm_sequences is not None:
+                    subject_sequences.append(lstm_sequences)
 
-            lstm_sequences_dict[mode] = lstm_sequences
-
+            if subject_sequences:
+                lstm_sequences_dict[mode] = np.concatenate(subject_sequences, axis=0)
+            else:
+                lstm_sequences_dict[mode] = np.zeros((1, l_seq, l_win, list(data[mode].values())[0].shape[1]))
+                
         self.train_set_lstm = {'data': lstm_sequences_dict['training']}
         self.val_set_lstm = {'data': lstm_sequences_dict['validation']}
         self.test_set_lstm = {'data': lstm_sequences_dict['test']}
