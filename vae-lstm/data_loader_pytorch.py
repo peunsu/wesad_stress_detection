@@ -14,36 +14,44 @@ class DataGenerator:
         data_dir = Path('../data')
         train_df = pd.read_csv(data_dir / 'train.csv')
         val_df = pd.read_csv(data_dir / 'val.csv')
+        val_df_with_anomaly = pd.read_csv(data_dir / 'val_with_anomaly.csv')
         test_df = pd.read_csv(data_dir / 'test.csv')
         
         # subject_id, label 분리
         train_subjects = train_df.pop('subject_id')
         val_subjects = val_df.pop('subject_id')
+        val_subjects_with_anomaly = val_df_with_anomaly.pop('subject_id')
         test_subjects = test_df.pop('subject_id')
+        
         train_df = train_df.drop(columns=['label'])
         val_df = val_df.drop(columns=['label'])
+        val_df_with_anomaly = val_df_with_anomaly.drop(columns=['label'])
         test_df = test_df.drop(columns=['label'])
         
         # 평균, 표준편차 계산하여 정규화
-        train_m = train_df.mean()
-        train_std = train_df.std()
-        train_df_normalized = (train_df - train_m) / train_std
-        val_df_normalized = (val_df - train_m) / train_std
-        test_df_normalized = (test_df - train_m) / train_std
+        # train_m = train_df.mean()
+        # train_std = train_df.std()
+        # train_df_normalized = (train_df - train_m) / train_std
+        # val_df_normalized = (val_df - train_m) / train_std
+        # test_df_normalized = (test_df - train_m) / train_std
         
         # subject_id별로 그룹화해서 딕셔너리 형태로 저장
         data = {
             'training': {
                 sid: group.to_numpy()
-                for sid, group in train_df_normalized.groupby(train_subjects)
+                for sid, group in train_df.groupby(train_subjects)
             },
             'validation': {
                 sid: group.to_numpy()
-                for sid, group in val_df_normalized.groupby(val_subjects)
+                for sid, group in val_df.groupby(val_subjects)
+            },
+            'validation_with_anomaly': {
+                sid: group.to_numpy()
+                for sid, group in val_df_with_anomaly.groupby(val_subjects_with_anomaly)
             },
             'test': {
                 sid: group.to_numpy()
-                for sid, group in test_df_normalized.groupby(test_subjects)
+                for sid, group in test_df.groupby(test_subjects)
             }
         }
 
@@ -52,7 +60,7 @@ class DataGenerator:
 
     def _create_vae_sets(self, data):
         rolling_windows_dict = {}
-        for mode in ['training', 'validation', 'test']:
+        for mode in ['training', 'validation', 'validation_with_anomaly', 'test']:
             subject_windows = []
             for sid, subject_data in data[mode].items():
                 n_sample = len(subject_data)
@@ -72,6 +80,7 @@ class DataGenerator:
 
         self.train_set_vae = {'data': rolling_windows_dict['training']}
         self.val_set_vae = {'data': rolling_windows_dict['validation']}
+        self.val_set_vae_with_anomaly = {'data': rolling_windows_dict['validation_with_anomaly']}
         self.test_set_vae = {'data': rolling_windows_dict['test']}
 
     def _create_lstm_sets(self, data):
@@ -79,7 +88,7 @@ class DataGenerator:
         l_seq = self.config['l_seq']
 
         lstm_sequences_dict = {}
-        for mode in ['training', 'validation', 'test']:
+        for mode in ['training', 'validation', 'validation_with_anomaly', 'test']:
             subject_sequences = []
             for sid, subject_data in data[mode].items():
                 n_sample = len(subject_data)
@@ -113,6 +122,7 @@ class DataGenerator:
                 
         self.train_set_lstm = {'data': lstm_sequences_dict['training']}
         self.val_set_lstm = {'data': lstm_sequences_dict['validation']}
+        self.val_set_lstm_with_anomaly = {'data': lstm_sequences_dict['validation_with_anomaly']}
         self.test_set_lstm = {'data': lstm_sequences_dict['test']}
 
     def get_vae_datasets(self):

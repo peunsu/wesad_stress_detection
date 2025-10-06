@@ -141,10 +141,16 @@ class VAEmodel(nn.Module):
         else:
             raise ValueError(f"Unsupported window length: {self.l_win}")
 
-    def encode(self, x):
+    def encode(self, x):        
         if x.dim() == 2:
             x = x.unsqueeze(-1)
         x = x.view(-1, self.l_win, self.n_channel) # (B, l_win, n_channel)
+        
+        # Window-level Within-channel Normalization
+        # X shape: (Batch, Seq_len, Features)
+        # 1e-6은 0으로 나누는 것을 방지하기 위한 작은 상수
+        x = (x - x.mean(dim=1, keepdim=True)) / (x.std(dim=1, keepdim=True) + 1e-6)
+        
         x = x.unsqueeze(1)  # (B, 1, l_win, n_channel)
 
         if getattr(self, '_encoder_symmetric_pad', False):
