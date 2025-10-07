@@ -21,24 +21,28 @@ class DataGenerator:
     def load_dataset(self):
         data_dir = Path('../data')
         train_df = pd.read_csv(data_dir / 'train.csv')
-        #train_df_with_anomaly = pd.read_csv(data_dir / 'train_with_anomaly.csv')
         test_df = pd.read_csv(data_dir / 'test.csv')
         
         # subject_id, label 분리
         train_subjects = train_df.pop('subject_id')
-        #train_subjects_with_anomaly = train_df_with_anomaly.pop('subject_id')
         test_subjects = test_df.pop('subject_id')
         
         train_df = train_df.drop(columns=['label'])
-        #train_df_with_anomaly = train_df_with_anomaly.drop(columns=['label'])
         test_df = test_df.drop(columns=['label'])
         
-        # 평균, 표준편차 계산하여 정규화
-        train_m = train_df.mean()
-        train_std = train_df.std()
-        train_df_normalized = (train_df - train_m) / train_std
-        #train_df_with_anomaly_normalized = (train_df_with_anomaly - train_m) / train_std
-        test_df_normalized = (test_df - train_m) / train_std
+        # float 컬럼만 선택
+        float_cols = train_df.select_dtypes(include='float').columns
+
+        # 평균과 표준편차 계산
+        train_m = train_df[float_cols].mean()
+        train_std = train_df[float_cols].std()
+
+        # float 컬럼만 정규화
+        train_df_normalized = train_df.copy()
+        train_df_normalized[float_cols] = (train_df[float_cols] - train_m) / train_std
+
+        test_df_normalized = test_df.copy()
+        test_df_normalized[float_cols] = (test_df[float_cols] - train_m) / train_std
         
         # subject_id별로 그룹화해서 딕셔너리 형태로 저장
         data = {
@@ -46,10 +50,6 @@ class DataGenerator:
                 sid: group.to_numpy()
                 for sid, group in train_df_normalized.groupby(train_subjects)
             },
-            # 'training_with_anomaly': {
-            #     sid: group.to_numpy()
-            #     for sid, group in train_df_with_anomaly_normalized.groupby(train_subjects_with_anomaly)
-            # },
             'test': {
                 sid: group.to_numpy()
                 for sid, group in test_df_normalized.groupby(test_subjects)
@@ -69,21 +69,20 @@ class DataGenerator:
                 if n_vae <= 0:
                     continue
 
-                windows = np.zeros((n_vae, self.config['l_win'], subject_data.shape[1]))
+                windows = np.zeros((n_vae, self.config['l_win'], subject_data.shape[1]), dtype=np.float16)
                 for i in range(n_vae):
                     windows[i] = subject_data[i:i + self.config['l_win']]
                 subject_windows.append(windows)
 
             if subject_windows:
-                rolling_windows_dict[mode] = np.concatenate(subject_windows, axis=0)
+                rolling_windows_dict[mode] = np.concatenate(subject_windows, axis=0, dtype=np.float16)
             else:
-                rolling_windows_dict[mode] = np.zeros((1, self.config['l_win'], list(data[mode].values())[0].shape[1]))
+                rolling_windows_dict[mode] = np.zeros((1, self.config['l_win'], list(data[mode].values())[0].shape[1]), dtype=np.float16)
 
         self.idx_train, self.idx_val, n_train, n_val = self.separate_train_and_val_set(rolling_windows_dict['training'].shape[0])
 
         self.train_set_vae = {'data': rolling_windows_dict['training'][self.idx_train]}
         self.val_set_vae = {'data': rolling_windows_dict['training'][self.idx_val]}
-        #self.train_set_vae_with_anomaly = {'data': rolling_windows_dict['training_with_anomaly']}
         self.test_set_vae = {'data': rolling_windows_dict['test']}
 
     def _create_lstm_sets(self, data):
@@ -95,7 +94,7 @@ class DataGenerator:
             subject_sequences = []
             for sid, subject_data in data[mode].items():
                 n_sample = len(subject_data)
-                lstm_sequences = None
+                lstm_sequences = []
 
                 for k in range(l_win):
                     n_not_overlap_wins = (n_sample - k) // l_win
@@ -103,31 +102,27 @@ class DataGenerator:
                     if n_lstm <= 0:
                         continue
 
-                    cur_seq = np.zeros((n_lstm, l_seq, l_win, subject_data.shape[1]))
+                    cur_seq = np.zeros((n_lstm, l_seq, l_win, subject_data.shape[1]), dtype=np.float16)
                     for i in range(n_lstm):
                         for j in range(l_seq):
                             start = k + l_win * (j + i)
                             end = start + l_win
                             cur_seq[i, j] = subject_data[start:end]
 
-                    if lstm_sequences is None:
-                        lstm_sequences = cur_seq
-                    else:
-                        lstm_sequences = np.concatenate((lstm_sequences, cur_seq), axis=0)
+                    lstm_sequences.append(cur_seq)
 
-                if lstm_sequences is not None:
-                    subject_sequences.append(lstm_sequences)
+                if lstm_sequences:
+                    subject_sequences.append(np.concatenate(lstm_sequences, axis=0, dtype=np.float16))
 
             if subject_sequences:
-                lstm_sequences_dict[mode] = np.concatenate(subject_sequences, axis=0)
+                lstm_sequences_dict[mode] = np.concatenate(subject_sequences, axis=0, dtype=np.float16)
             else:
-                lstm_sequences_dict[mode] = np.zeros((1, l_seq, l_win, list(data[mode].values())[0].shape[1]))
+                lstm_sequences_dict[mode] = np.zeros((1, l_seq, l_win, list(data[mode].values())[0].shape[1]), dtype=np.float16)
 
         self.idx_train, self.idx_val, n_train, n_val = self.separate_train_and_val_set(lstm_sequences_dict['training'].shape[0])
 
         self.train_set_lstm = {'data': lstm_sequences_dict['training'][self.idx_train]}
         self.val_set_lstm = {'data': lstm_sequences_dict['training'][self.idx_val]}
-        #self.train_set_lstm_with_anomaly = {'data': lstm_sequences_dict['training_with_anomaly']}
         self.test_set_lstm = {'data': lstm_sequences_dict['test']}
 
     def get_vae_datasets(self):

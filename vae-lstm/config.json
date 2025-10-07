@@ -4,7 +4,7 @@
     "one_image": 0,
     "l_seq": 12,
     "l_win": 48,
-    "n_channel": 14,
+    "n_channel": 67,
     "TRAIN_VAE": 1,
     "TRAIN_LSTM": 1,
     "TRAIN_sigma": 0,

@@ -2,11 +2,12 @@
     "exp_name": "ma-vae",
     "load_dir": "default",
     "window_size": 48,
-    "window_shift": 24,
-    "features": 14,
+    "window_shift": 12,
+    "features": 67,
     "latent_dim": 64,
     "batch_size": 256,
     "epochs": 10000,
+    "patience": 50,
     "seed": 42,
     "TRAIN_VAE": 1
 }

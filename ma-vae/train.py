@@ -116,9 +116,9 @@ def main():
 
     # 콜백 설정 (PyTorch 버전)
     es = EarlyStopping(
-        monitor='val_log_probs_loss', # Keras의 val_log_probs_loss는 NLL_loss와 동일
+        monitor='val_recon_loss', # Keras의 val_log_probs_loss는 NLL_loss와 동일
         mode='min',
-        patience=50,
+        patience=config['patience'],
         restore_best_weights=True,
         verbose=1
     )

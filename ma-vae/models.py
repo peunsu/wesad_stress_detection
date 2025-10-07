@@ -48,7 +48,7 @@ class KLAnnealingHelper:
     def print_status(self, epoch):
         shifted_epochs = max(0.0, epoch - self.grace_period_idx)
         beta_value = self.get_beta(epoch)
-        print(f"Beta value: {beta_value:.10f}, cycle epoch {int(shifted_epochs) % self.annealing_epochs}")
+        print(f"KL Annealing Type: {self.type}, Beta value: {beta_value:.10f}, cycle epoch {int(shifted_epochs) % self.annealing_epochs}")
 
 # --------------------------------------------------------------------------------
 # 2. 모델 구성 요소 (Encoder, Decoder, MA)
@@ -278,7 +278,7 @@ class MA_VAE(nn.Module):
 
 # EarlyStopping 구현
 class EarlyStopping:
-    def __init__(self, monitor='val_log_probs_loss', mode='min', patience=250, restore_best_weights=True, verbose=1):
+    def __init__(self, monitor='val_recon_loss', mode='min', patience=250, restore_best_weights=True, verbose=1):
         self.monitor = monitor
         self.mode = mode
         self.patience = patience
@@ -302,7 +302,7 @@ class EarlyStopping:
             else:
                 self.epochs_no_improve += 1
                 if self.verbose:
-                    print(f"Epoch {epoch+1}: {self.monitor} did not improve. No. of epochs since last improvement: {self.epochs_no_improve}")
+                    print(f"Epoch {epoch+1}: {self.monitor} did not improve. Best loss: {self.best_loss:.6f}. No. of epochs since last improvement: {self.epochs_no_improve}")
                 if self.epochs_no_improve >= self.patience:
                     self.stop_training = True
                     if self.verbose:
