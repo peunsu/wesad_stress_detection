@@ -41,8 +41,8 @@ def save_model(model, optimizer, epoch, history, config):
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
         'train_losses': history['loss'],
-        'val_losses': history['val_log_probs_loss'],
-        'recon_losses': history['log_probs_loss'],
+        'val_losses': history['val_recon_loss'],
+        'recon_losses': history['recon_loss'],
         'kl_losses': history['kl_loss']
     }
 
@@ -62,8 +62,8 @@ def plot_training_curves(history, config):
     axes[0, 0].grid(True)
     
     # Reconstruction loss
-    axes[0, 1].plot(history['log_probs_loss'], label='Train')
-    axes[0, 1].plot(history['val_log_probs_loss'], label='Validation')
+    axes[0, 1].plot(history['recon_loss'], label='Train')
+    axes[0, 1].plot(history['val_recon_loss'], label='Validation')
     axes[0, 1].set_title('Reconstruction Loss')
     axes[0, 1].set_xlabel('Epoch')
     axes[0, 1].set_ylabel('Loss')
@@ -118,7 +118,7 @@ def main():
     es = EarlyStopping(
         monitor='val_log_probs_loss', # Keras의 val_log_probs_loss는 NLL_loss와 동일
         mode='min',
-        patience=250,
+        patience=50,
         restore_best_weights=True,
         verbose=1
     )
@@ -144,7 +144,7 @@ def main():
     # --------------------------------------------------------------------------------
 
     print(f"Starting training on device: {device}")
-    history = {'loss': [], 'log_probs_loss': [], 'kl_loss': [], 'val_log_probs_loss': []}
+    history = {'loss': [], 'recon_loss': [], 'kl_loss': [], 'val_recon_loss': []}
 
     for epoch in range(config['epochs']):
         if es.stop_training:
@@ -162,16 +162,16 @@ def main():
             if isinstance(X, (list, tuple)):
                 X = X[0]
             X = X.to(device)
-            total_loss, nll_loss, kl_loss = model.training_step(X, optimizer, current_beta)
+            total_loss, recon_loss, kl_loss = model.training_step(X, optimizer, current_beta)
             train_losses.append({
                 'total_loss': total_loss,
-                'nll_loss': nll_loss,
+                'recon_loss': recon_loss,
                 'kl_loss': kl_loss,
             })
         
         # 훈련 손실 평균
         avg_total_loss = np.mean([l['total_loss'] for l in train_losses])
-        avg_nll_loss = np.mean([l['nll_loss'] for l in train_losses])
+        avg_recon_loss = np.mean([l['recon_loss'] for l in train_losses])
         avg_kl_loss = np.mean([l['kl_loss'] for l in train_losses])
         
         # 검증 단계
@@ -180,28 +180,28 @@ def main():
             if isinstance(X_val, (list, tuple)):
                 X_val = X_val[0]
             X_val = X_val.to(device)
-            total_loss, nll_loss, kl_loss = model.validation_step(X_val, current_beta)
+            total_loss, recon_loss, kl_loss = model.validation_step(X_val, current_beta)
             val_losses.append({
                 'total_loss': total_loss,
-                'nll_loss': nll_loss,
+                'recon_loss': recon_loss,
                 'kl_loss': kl_loss,
             })
             
         # 검증 손실 평균
-        avg_val_nll_loss = np.mean([l['nll_loss'] for l in val_losses])
+        avg_val_recon_loss = np.mean([l['recon_loss'] for l in val_losses])
         
         # 기록
         history['loss'].append(avg_total_loss)
-        history['log_probs_loss'].append(avg_nll_loss)
+        history['recon_loss'].append(avg_recon_loss)
         history['kl_loss'].append(avg_kl_loss)
-        history['val_log_probs_loss'].append(avg_val_nll_loss)
+        history['val_recon_loss'].append(avg_val_recon_loss)
 
         # 출력
-        print(f"Epoch {epoch+1}/{config['epochs']} - loss: {avg_total_loss:.6f} - log_probs_loss: {avg_nll_loss:.6f} - kl_loss: {avg_kl_loss:.6f} - val_log_probs_loss: {avg_val_nll_loss:.6f}")
+        print(f"Epoch {epoch+1}/{config['epochs']} - loss: {avg_total_loss:.6f} - recon_loss: {avg_recon_loss:.6f} - kl_loss: {avg_kl_loss:.6f} - val_recon_loss: {avg_val_recon_loss:.6f}")
         
         # Early Stopping 체크
-        es(avg_val_nll_loss, model, epoch)
-        
+        es(avg_val_recon_loss, model, epoch)
+
         # Save model checkpoint
         if (epoch + 1) % 10 == 0:
             save_model(model, optimizer, epoch, history, config)

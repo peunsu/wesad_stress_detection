@@ -204,7 +204,8 @@ class MA_VAE(nn.Module):
         # beta는 훈련 루프에서 외부적으로 관리
         self.beta = beta 
         
-    def loss_fn(self, X, Xhat, z_mean, z_log_var):      
+    def loss_fn(self, X, Xhat, z_mean, z_log_var):     
+        batch_size = X.size(0) 
         recon_loss = F.mse_loss(Xhat, X, reduction='mean')
         kl_loss = -0.5 * torch.mean(1 + z_log_var - z_mean.pow(2) - z_log_var.exp())
         return recon_loss, kl_loss
@@ -222,19 +223,16 @@ class MA_VAE(nn.Module):
         Xhat_mean, Xhat_log_var, Xhat = self.decoder(A)
         
         # Loss 계산
-        NLL_loss_batch, KL_loss_batch = self.loss_fn(X, Xhat, z_mean, z_log_var)
+        recon_loss_batch, KL_loss_batch = self.loss_fn(X, Xhat, z_mean, z_log_var)
         # Total Loss
-        total_loss_batch = NLL_loss_batch + beta * KL_loss_batch
-        
-        # Total Loss (Batch 차원에 대한 평균)
-        total_loss_batch_mean = torch.mean(total_loss_batch)
+        total_loss_batch = recon_loss_batch + beta * KL_loss_batch
         
         # Backward Pass 및 최적화
-        total_loss_batch_mean.backward()
+        total_loss_batch.backward()
         optimizer.step()
 
         # 결과 반환 (Batch 평균)
-        return total_loss_batch_mean.item(), torch.mean(NLL_loss_batch).item(), torch.mean(KL_loss_batch).item()
+        return total_loss_batch.item(), recon_loss_batch.item(), KL_loss_batch.item()
     
     # Custom Test/Validation Step
     def validation_step(self, X, beta):
@@ -247,7 +245,7 @@ class MA_VAE(nn.Module):
             Xhat_mean, Xhat_log_var, Xhat = self.decoder(A)
             
             # Loss 계산
-            NLL_loss_batch, KL_loss_batch = self.loss_fn(X, Xhat, z_mean, z_log_var)
+            recon_loss_batch, KL_loss_batch = self.loss_fn(X, Xhat, z_mean, z_log_var)
             
             # Keras의 validation_data에서는 beta가 고정된 값 (예: 1e-8)을 사용하거나
             # 훈련 중 적용된 beta를 사용할 수 있지만, 여기서는 NLL만 모니터링하므로,
@@ -255,19 +253,16 @@ class MA_VAE(nn.Module):
             # Keras의 EarlyStopping이 `val_log_probs_loss`를 모니터링하므로, NLL_loss만 반환
             
             # Total Loss
-            total_loss_batch = NLL_loss_batch + beta * KL_loss_batch
-            
-            # Total Loss (Batch 차원에 대한 평균)
-            total_loss_batch_mean = torch.mean(total_loss_batch)
+            total_loss_batch = recon_loss_batch + beta * KL_loss_batch
 
-            return total_loss_batch_mean.item(), torch.mean(NLL_loss_batch).item(), torch.mean(KL_loss_batch).item()
+            return total_loss_batch.item(), recon_loss_batch.item(), KL_loss_batch.item()
 
     # Keras의 call 메서드와 동일한 역할
     def forward(self, X):
         # Window-level Within-channel Normalization
         # X shape: (Batch, Seq_len, Features)
         # 1e-6은 0으로 나누는 것을 방지하기 위한 작은 상수
-        X = (X - X.mean(dim=1, keepdim=True)) / (X.std(dim=1, keepdim=True) + 1e-6)
+        #X = (X - X.mean(dim=1, keepdim=True)) / (X.std(dim=1, keepdim=True) + 1e-6)
         
         # Encoder is fed with input window
         z_mean, z_log_var, z, states = self.encoder(X)

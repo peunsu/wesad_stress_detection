@@ -2,7 +2,7 @@
     "exp_name": "ma-vae",
     "load_dir": "default",
     "window_size": 48,
-    "window_shift": 1,
+    "window_shift": 24,
     "features": 14,
     "latent_dim": 64,
     "batch_size": 256,
