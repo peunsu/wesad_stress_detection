@@ -68,8 +68,6 @@ class VAETrainer:
         self.kl_losses = []
         self.recon_losses = []
         
-        
-        
         # Create directories
         os.makedirs(config['checkpoint_dir'], exist_ok=True)
         os.makedirs(config['result_dir'], exist_ok=True)
@@ -93,25 +91,26 @@ class VAETrainer:
         
         # Sigma regularizer (matching TensorFlow)
         # -D/2 * log(sigma^2*2*pi)
-        sigma_regularizer = self.model.input_dims / 2 * torch.log(sigma2) #  정규분포에서의 분산값을 정규화하기 위한 항
-        two_pi = self.model.input_dims / 2 * torch.tensor(2 * np.pi, device=sigma2.device)
+        # sigma_regularizer = self.model.input_dims / 2 * torch.log(sigma2) #  정규분포에서의 분산값을 정규화하기 위한 항
+        # two_pi = self.model.input_dims / 2 * torch.tensor(2 * np.pi, device=sigma2.device)
         
         # ELBO loss (matching TensorFlow exactly)
         # 일반적으로 VAE의 ELBO는 reconstruction error / (2*sigma^2) + KL loss 형태 
         # 여기서는 TensorFlow 코드와 맞추기 위해 two_pi와 sigma_regularizer 항을 추가했음.
         # 하지만 논문이나 일반적인 구현에서는 two_pi, sigma_regularizer 항은 보통 포함하지 않음.
-        elbo_loss = two_pi + sigma_regularizer + 0.5 * weighted_reconstruction_error + kl_loss
+        #elbo_loss = two_pi + sigma_regularizer + 0.5 * weighted_reconstruction_error + kl_loss
+        elbo_loss = 0.5 * weighted_reconstruction_error + kl_loss # 덧셈항 제거해도 그라디언트 계산에는 영향 없음
         
         return elbo_loss, weighted_reconstruction_error, kl_loss
     
-    def train_epoch(self, train_loader):
+    def train_epoch(self, train_loader, epoch, epochs):
         """Train for one epoch"""
         self.model.train()
         total_loss = 0
         total_recon_loss = 0
         total_kl_loss = 0
 
-        for batch_data in tqdm(train_loader, desc="Training VAE"):
+        for batch_data in tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs} (Train)"):
             if isinstance(batch_data, (list, tuple)):
                 batch_data = batch_data[0]
 
@@ -141,8 +140,8 @@ class VAETrainer:
         avg_kl_loss = total_kl_loss / len(train_loader)
         
         return avg_loss, avg_recon_loss, avg_kl_loss
-    
-    def validate(self, val_loader):
+
+    def validate(self, val_loader, epoch, epochs):
         """Validate the model"""
         self.model.eval()
         total_loss = 0
@@ -150,7 +149,7 @@ class VAETrainer:
         total_kl_loss = 0
         
         with torch.no_grad():
-            for batch_data in val_loader:
+            for batch_data in tqdm(val_loader, desc=f"Epoch {epoch+1}/{epochs} (Val)"):
                 if isinstance(batch_data, (list, tuple)):
                     batch_data = batch_data[0]
                 
@@ -187,11 +186,11 @@ class VAETrainer:
                 param_group['lr'] = current_lr
 
             # Training
-            train_loss, train_recon, train_kl = self.train_epoch(train_loader)
+            train_loss, train_recon, train_kl = self.train_epoch(train_loader, epoch, epochs)
 
             # Validation
-            val_loss, val_recon, val_kl = self.validate(val_loader)
-            
+            val_loss, val_recon, val_kl = self.validate(val_loader, epoch, epochs)
+
             # Store losses
             self.train_losses.append(train_loss)
             self.val_losses.append(val_loss)
@@ -199,16 +198,12 @@ class VAETrainer:
             self.kl_losses.append(train_kl)
             
             # Print progress
-            print(f"Epoch {epoch+1}/{epochs}")
-            print(f"  LR: {current_lr:.6f}")
-            print(f"  Train Loss: {train_loss:.4f} (Recon: {train_recon:.4f}, KL: {train_kl:.4f})")
-            print(f"  Val Loss: {val_loss:.4f} (Recon: {val_recon:.4f}, KL: {val_kl:.4f})")
-            print(f"  Sigma2: {self.model.get_sigma2().item():.4f}")
+            print(f"Epoch {epoch+1}/{epochs} - train loss: {train_loss:.6f} - recon_loss: {train_recon:.6f} - kl_loss: {train_kl:.6f}")
+            print(f"Epoch {epoch+1}/{epochs} - val loss: {val_loss:.6f} - recon_loss: {val_recon:.6f} - kl_loss: {val_kl:.6f}")
+            print(f"Epoch {epoch+1}/{epochs} - LR: {current_lr:.6f} - Sigma2: {self.model.get_sigma2().item():.4f}")
             
             # Early Stopping 체크
             self.es(val_loss, self.model, epoch)
-            
-            print("-" * 50)
             
             # Save model checkpoint
             if (epoch + 1) % 10 == 0:
@@ -300,7 +295,9 @@ class VAETrainer:
                 
                 batch_data = batch_data.to(self.device)
                 mu, _ = self.model.encode(batch_data)
-                embeddings.append(mu.cpu().numpy())
+
+                embedding = mu.view(batch_data.shape[0], -1, self.config['code_size'])
+                embeddings.append(embedding.cpu().numpy())
         
         return np.concatenate(embeddings, axis=0)
     
@@ -324,7 +321,6 @@ class LSTMTrainer:
         self.config = config
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.optimizer = optim.Adam(model.parameters(), lr=config['learning_rate_lstm'])
-        self.criterion = nn.MSELoss()
         
         self.es = EarlyStopping(
             monitor='val_loss',
@@ -333,34 +329,46 @@ class LSTMTrainer:
             restore_best_weights=True,
             verbose=1
         )
+        
+        # Training history
+        self.train_losses = []
+        self.val_losses = []
 
-    def train_epoch(self, train_loader):
+    def train_epoch(self, train_loader, epoch, epochs):
         self.model.train()
         total_loss = 0.0
-        for batch_x, batch_y in tqdm(train_loader, desc="Training LSTM"):
+        for batch_x, batch_y in tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs} (Train)"):
             batch_x = batch_x.to(self.device)
             batch_y = batch_y.to(self.device)
             
             self.optimizer.zero_grad()
             output = self.model(batch_x)
-            loss = self.criterion(output, batch_y)
+            
+            loss = torch.mean(
+                torch.sum((output - batch_y) ** 2, dim=[1, 2])
+            )
+            
             loss.backward()
             self.optimizer.step()
             total_loss += loss.item()
         return total_loss / len(train_loader)
 
-    def validate(self, val_loader):
+    def validate(self, val_loader, epoch, epochs):
         if val_loader is None:
             return 0.0
         self.model.eval()
         total_loss = 0.0
         with torch.no_grad():
-            for batch_x, batch_y in val_loader:
+            for batch_x, batch_y in tqdm(val_loader, desc=f"Epoch {epoch+1}/{epochs} (Val)"):
                 batch_x = batch_x.to(self.device)
                 batch_y = batch_y.to(self.device)
                 
                 output = self.model(batch_x)
-                loss = self.criterion(output, batch_y)
+                
+                loss = torch.mean(
+                    torch.sum((output - batch_y) ** 2, dim=[1, 2])
+                )
+                
                 total_loss += loss.item()
         return total_loss / len(val_loader)
 
@@ -368,13 +376,25 @@ class LSTMTrainer:
         for epoch in range(epochs):
             if self.es.stop_training:
                 break
+
+            train_loss = self.train_epoch(train_loader, epoch, epochs)
+            val_loss = self.validate(val_loader, epoch, epochs)
+
+            # Save training history
+            self.train_losses.append(train_loss)
+            self.val_losses.append(val_loss)
             
-            train_loss = self.train_epoch(train_loader)
-            val_loss = self.validate(val_loader)
-            print(f"Epoch {epoch + 1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+            print(f"Epoch {epoch+1}/{epochs} - train loss: {train_loss:.6f} - val loss: {val_loss:.6f}")
             
             # Early Stopping 체크
             self.es(val_loss, self.model, epoch)
+            
+            if (epoch + 1) % 10 == 0:
+                self.save_model(epoch)
+        
+        # Save final model
+        self.save_model(epochs - 1)
+        self.plot_training_curves()
 
     def predict(self, test_loader):
         self.model.eval()
@@ -387,3 +407,45 @@ class LSTMTrainer:
                 output = self.model(batch_x)
                 predictions.append(output.cpu().numpy())
         return np.concatenate(predictions, axis=0)
+    
+    def save_model(self, epoch):
+        """Save model checkpoint"""
+        checkpoint = {
+            'epoch': epoch,
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'train_losses': self.train_losses,
+            'val_losses': self.val_losses
+        }
+        
+        torch.save(checkpoint, f"{self.config['checkpoint_dir_lstm']}/lstm_checkpoint_epoch_{epoch+1}.pth")
+        print(f"Model saved at epoch {epoch+1}")
+    
+    def load_model(self, checkpoint_path):
+        """Load model checkpoint"""
+        if os.path.exists(checkpoint_path):
+            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            self.train_losses = checkpoint.get('train_losses', [])
+            self.val_losses = checkpoint.get('val_losses', [])
+            print(f"Model loaded from {checkpoint_path}")
+        else:
+            print(f"No checkpoint found at {checkpoint_path}")
+            
+    def plot_training_curves(self):
+        """Plot training curves"""
+        fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+        
+        # Total loss
+        ax.plot(self.train_losses, label='Train')
+        ax.plot(self.val_losses, label='Validation')
+        ax.set_title('Total Loss')
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Loss')
+        ax.legend()
+        ax.grid(True)
+
+        plt.tight_layout()
+        plt.savefig(f"{self.config['result_dir']}/training_curves_lstm.pdf")
+        plt.close()

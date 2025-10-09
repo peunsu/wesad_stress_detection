@@ -174,3 +174,18 @@ class DataGenerator:
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
         return train_loader, val_loader
+    
+    def get_embeddings_datasets(self):
+        return self.train_set_lstm['data'], self.val_set_lstm['data']
+    
+    def get_embeddings_dataloaders(self, batch_size):
+        train_data = torch.from_numpy(self.train_set_lstm['data']).float()
+        val_data = torch.from_numpy(self.val_set_lstm['data']).float()
+
+        train_dataset = TensorDataset(train_data)
+        val_dataset = TensorDataset(val_data)
+
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
+        return train_loader, val_loader

@@ -2,12 +2,12 @@
     "exp_name": "sis-vae",
     "load_dir": "default",
     "window_size": 256,
-    "window_shift": 128,
+    "window_shift": 4,
     "features": 67,
     "latent_dim": 40,
     "batch_size": 256,
-    "epochs": 10000,
-    "patience": 50,
+    "epochs": 100,
+    "patience": 10,
     "seed": 42,
     "TRAIN_VAE": 1
 }

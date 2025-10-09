@@ -1,8 +1,10 @@
 import random
 import torch
 import numpy as np
+from tqdm import tqdm
 from pathlib import Path
 from torch.utils.data import DataLoader, TensorDataset
+
 
 from models import VAEmodel, LSTMModel
 from data_loader import DataGenerator
@@ -31,6 +33,18 @@ def load_latest_vae_checkpoint(trainer, checkpoint_dir):
     print(f"Loaded VAE checkpoint: {latest_checkpoint}")
     return True
 
+def load_latest_lstm_checkpoint(trainer, checkpoint_dir):
+    if not Path(checkpoint_dir).is_dir():
+        return False
+
+    checkpoint_files = [f for f in Path(checkpoint_dir).iterdir() if f.name.startswith('lstm_checkpoint') and f.name.endswith('.pth')]
+    if not checkpoint_files:
+        return False
+
+    latest_checkpoint = max(checkpoint_files, key=lambda x: int(x.name.split('_')[-1].split('.')[0]))
+    trainer.load_model(Path(checkpoint_dir) / latest_checkpoint)
+    print(f"Loaded LSTM checkpoint: {latest_checkpoint}")
+    return True
 
 # VAE 모델을 사용해서 입력된 sequence를 latent space embedding(mu vector)로 변환
 def generate_lstm_embeddings(model, sequences, device):
@@ -40,13 +54,12 @@ def generate_lstm_embeddings(model, sequences, device):
     embeddings = np.zeros((len(sequences), l_seq, code_size), dtype=np.float32) # 결과 저장할 numpy 배열
 
     with torch.no_grad():
-        for idx in range(len(sequences)):
+        for idx in tqdm(range(len(sequences))):
             batch = torch.from_numpy(sequences[idx]).float().to(device)  # (l_seq, l_win, n_channel) => sequece 데이터 tensor로 변환
-            #batch = batch.squeeze(-1)  # (l_seq, l_win)
-            recon, mu, _ = model(batch)
+            recon, mu, std = model(batch)
             embeddings[idx] = mu.cpu().numpy()  # mu 벡터를 numpy 배열로 변환하여 저장
 
-    return embeddings
+    return embeddings # (num_sequences, l_seq, code_size) 형태의 numpy 배열 반환, 각 sequence는 l_seq 길이의 latent space embedding (code_size 크기의 mu 벡터)로 표현됨
 
 
 def main():
@@ -81,17 +94,14 @@ def main():
 
     # config 확인해서 LSTM 모델 학습 or 불러오기
     if config['TRAIN_LSTM'] and config['num_epochs_lstm'] > 0:
-        if config['TRAIN_VAE']:
-            # ensure we reuse trained weights without reinitialising
-            load_latest_vae_checkpoint(vae_trainer, config['checkpoint_dir'])
         vae_model.eval()
 
         print("Generating embeddings for LSTM training...")
-        train_sequences = data.train_set_lstm['data']
-        val_sequences = data.val_set_lstm['data']
-
-        train_embeddings = generate_lstm_embeddings(vae_model, train_sequences, device)
-        val_embeddings = generate_lstm_embeddings(vae_model, val_sequences, device)
+        
+        train_embeddings_loader, val_embeddings_loader = data.get_embeddings_dataloaders(config['batch_size_lstm'])
+        
+        train_embeddings = vae_trainer.generate_embeddings(train_embeddings_loader)
+        val_embeddings = vae_trainer.generate_embeddings(val_embeddings_loader)
 
         x_train = train_embeddings[:, :-1]
         y_train = train_embeddings[:, 1:]
@@ -112,16 +122,8 @@ def main():
         lstm_model = LSTMModel(config).to(device)
         lstm_trainer = LSTMTrainer(lstm_model, config)
 
-        # LSTM 모델 있으면 불러오기
-        lstm_checkpoint_path = Path(config['checkpoint_dir_lstm']) / 'lstm_model.pth'
-        if lstm_checkpoint_path.is_file():
-            lstm_model.load_state_dict(torch.load(lstm_checkpoint_path, map_location=device))
-            print("Loaded existing LSTM checkpoint.")
-
         # LSTM 모델 학습
         lstm_trainer.train(train_lstm_loader, val_lstm_loader, config['num_epochs_lstm'])
-        torch.save(lstm_model.state_dict(), lstm_checkpoint_path)
-        print("Saved LSTM checkpoint.")
 
         lstm_model.eval()
         with torch.no_grad():
