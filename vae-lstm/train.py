@@ -4,9 +4,9 @@ import numpy as np
 from pathlib import Path
 from torch.utils.data import DataLoader, TensorDataset
 
-from models_pytorch import VAEmodel, LSTMModel, LSTMTrainer
-from data_loader_pytorch import DataGenerator
-from trainers_pytorch import VAETrainer
+from models import VAEmodel, LSTMModel
+from data_loader import DataGenerator
+from trainers import VAETrainer, LSTMTrainer
 from utils import process_config, create_dirs, get_args, save_config
 
 
@@ -41,8 +41,8 @@ def generate_lstm_embeddings(model, sequences, device):
 
     with torch.no_grad():
         for idx in range(len(sequences)):
-            batch = torch.from_numpy(sequences[idx]).float().to(device)  # (l_seq, l_win, 1) => sequece 데이터 tensor로 변환
-            batch = batch.squeeze(-1)  # (l_seq, l_win)
+            batch = torch.from_numpy(sequences[idx]).float().to(device)  # (l_seq, l_win, n_channel) => sequece 데이터 tensor로 변환
+            #batch = batch.squeeze(-1)  # (l_seq, l_win)
             recon, mu, _ = model(batch)
             embeddings[idx] = mu.cpu().numpy()  # mu 벡터를 numpy 배열로 변환하여 저장
 

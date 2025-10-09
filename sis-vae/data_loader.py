@@ -99,9 +99,12 @@ class DataGenerator:
         self.train_set_vae = {'data': rolling_windows_dict['training'][self.idx_train]}
         self.val_set_vae = {'data': rolling_windows_dict['training'][self.idx_val]}
         self.test_set_vae = {'data': rolling_windows_dict['test']}
-
+    
     def get_vae_datasets(self):
         return self.train_set_vae['data'], self.val_set_vae['data']
+    
+    def get_nonoverlap_vae_datasets(self):
+        return self.train_set_vae_nonoverlap['data'], self.val_set_vae_nonoverlap['data']
 
     def get_vae_dataloaders(self):
         batch_size = self.config['batch_size']

@@ -63,21 +63,33 @@ class DataGenerator:
         rolling_windows_dict = {}
         for mode in ['training', 'test']:
             subject_windows = []
-            for sid, subject_data in data[mode].items():
-                n_sample = len(subject_data)
+            
+            if mode == 'training':
+                for sid, subject_data in data[mode].items():
+                    n_sample = len(subject_data)
+                    n_vae = n_sample - self.config['l_win'] + 1
+                    if n_vae <= 0:
+                        continue
+                    windows = np.zeros((n_vae, self.config['l_win'], subject_data.shape[1]), dtype=np.float16)
+                    for i in range(n_vae):
+                        windows[i] = subject_data[i:i + self.config['l_win']]
+                    subject_windows.append(windows)
+            elif mode == 'test':
+                data_all = np.concatenate(list(data[mode].values()), axis=0)
+                n_sample = len(data_all)
                 n_vae = n_sample - self.config['l_win'] + 1
                 if n_vae <= 0:
                     continue
-
-                windows = np.zeros((n_vae, self.config['l_win'], subject_data.shape[1]), dtype=np.float16)
+                windows = np.zeros((n_vae, self.config['l_win'], data_all.shape[1]), dtype=np.float16)
                 for i in range(n_vae):
-                    windows[i] = subject_data[i:i + self.config['l_win']]
+                    windows[i] = data_all[i:i + self.config['l_win']]
                 subject_windows.append(windows)
 
             if subject_windows:
                 rolling_windows_dict[mode] = np.concatenate(subject_windows, axis=0, dtype=np.float16)
             else:
                 rolling_windows_dict[mode] = np.zeros((1, self.config['l_win'], list(data[mode].values())[0].shape[1]), dtype=np.float16)
+        
 
         self.idx_train, self.idx_val, n_train, n_val = self.separate_train_and_val_set(rolling_windows_dict['training'].shape[0])
 
@@ -92,8 +104,31 @@ class DataGenerator:
         lstm_sequences_dict = {}
         for mode in ['training', 'test']:
             subject_sequences = []
-            for sid, subject_data in data[mode].items():
-                n_sample = len(subject_data)
+            if mode == 'training':
+                for sid, subject_data in data[mode].items():
+                    n_sample = len(subject_data)
+                    lstm_sequences = []
+
+                    for k in range(l_win):
+                        n_not_overlap_wins = (n_sample - k) // l_win
+                        n_lstm = n_not_overlap_wins - l_seq + 1
+                        if n_lstm <= 0:
+                            continue
+
+                        cur_seq = np.zeros((n_lstm, l_seq, l_win, subject_data.shape[1]), dtype=np.float16)
+                        for i in range(n_lstm):
+                            for j in range(l_seq):
+                                start = k + l_win * (j + i)
+                                end = start + l_win
+                                cur_seq[i, j] = subject_data[start:end]
+
+                        lstm_sequences.append(cur_seq)
+
+                    if lstm_sequences:
+                        subject_sequences.append(np.concatenate(lstm_sequences, axis=0, dtype=np.float16))
+            elif mode == 'test':
+                data_all = np.concatenate(list(data[mode].values()), axis=0)
+                n_sample = len(data_all)
                 lstm_sequences = []
 
                 for k in range(l_win):
@@ -102,12 +137,12 @@ class DataGenerator:
                     if n_lstm <= 0:
                         continue
 
-                    cur_seq = np.zeros((n_lstm, l_seq, l_win, subject_data.shape[1]), dtype=np.float16)
+                    cur_seq = np.zeros((n_lstm, l_seq, l_win, data_all.shape[1]), dtype=np.float16)
                     for i in range(n_lstm):
                         for j in range(l_seq):
                             start = k + l_win * (j + i)
                             end = start + l_win
-                            cur_seq[i, j] = subject_data[start:end]
+                            cur_seq[i, j] = data_all[start:end]
 
                     lstm_sequences.append(cur_seq)
 

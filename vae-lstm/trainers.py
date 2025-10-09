@@ -8,6 +8,40 @@ import torch.optim as optim
 from torch.nn.utils import clip_grad_value_
 from tqdm import tqdm
 
+class EarlyStopping:
+    def __init__(self, monitor='val_recon_loss', mode='min', patience=250, restore_best_weights=True, verbose=1):
+        self.monitor = monitor
+        self.mode = mode
+        self.patience = patience
+        self.restore_best_weights = restore_best_weights
+        self.verbose = verbose
+
+        self.best_loss = float('inf') if mode == 'min' else float('-inf')
+        self.epochs_no_improve = 0
+        self.stop_training = False
+        self.best_weights = None
+        
+    def __call__(self, current_loss, model, epoch):
+        if self.mode == 'min':
+            if current_loss < self.best_loss:
+                self.best_loss = current_loss
+                self.epochs_no_improve = 0
+                if self.restore_best_weights:
+                    self.best_weights = model.state_dict()
+                if self.verbose:
+                    print(f"Epoch {epoch+1}: {self.monitor} improved to {self.best_loss:.6f}. Saving best weights.")
+            else:
+                self.epochs_no_improve += 1
+                if self.verbose:
+                    print(f"Epoch {epoch+1}: {self.monitor} did not improve. Best loss: {self.best_loss:.6f}. No. of epochs since last improvement: {self.epochs_no_improve}")
+                if self.epochs_no_improve >= self.patience:
+                    self.stop_training = True
+                    if self.verbose:
+                        print(f"Early stopping at epoch {epoch+1}.")
+                    if self.restore_best_weights and self.best_weights is not None:
+                        model.load_state_dict(self.best_weights)
+                        if self.verbose:
+                            print("Restoring best model weights.")
 
 class VAETrainer:
     def __init__(self, model, data, config):
@@ -20,12 +54,21 @@ class VAETrainer:
         # Optimizer
         self.base_lr = config['learning_rate_vae']
         self.optimizer = optim.Adam(model.parameters(), lr=self.base_lr, betas=(0.9, 0.95))
+        self.es = EarlyStopping(
+            monitor='val_loss',
+            mode='min',
+            patience=config['patience'],
+            restore_best_weights=True,
+            verbose=1
+        )
         
         # Training history
         self.train_losses = []
         self.val_losses = []
         self.kl_losses = []
         self.recon_losses = []
+        
+        
         
         # Create directories
         os.makedirs(config['checkpoint_dir'], exist_ok=True)
@@ -136,6 +179,9 @@ class VAETrainer:
         print("Starting VAE training...")
 
         for epoch in range(epochs):
+            if self.es.stop_training:
+                break
+                
             current_lr = self.base_lr * (0.98 ** epoch)
             for param_group in self.optimizer.param_groups:
                 param_group['lr'] = current_lr
@@ -158,6 +204,10 @@ class VAETrainer:
             print(f"  Train Loss: {train_loss:.4f} (Recon: {train_recon:.4f}, KL: {train_kl:.4f})")
             print(f"  Val Loss: {val_loss:.4f} (Recon: {val_recon:.4f}, KL: {val_kl:.4f})")
             print(f"  Sigma2: {self.model.get_sigma2().item():.4f}")
+            
+            # Early Stopping 체크
+            self.es(val_loss, self.model, epoch)
+            
             print("-" * 50)
             
             # Save model checkpoint
@@ -266,3 +316,74 @@ class VAETrainer:
                 reconstructions.append(recon.cpu().numpy())
         
         return np.concatenate(reconstructions, axis=0)
+
+
+class LSTMTrainer:
+    def __init__(self, model, config):
+        self.model = model
+        self.config = config
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.optimizer = optim.Adam(model.parameters(), lr=config['learning_rate_lstm'])
+        self.criterion = nn.MSELoss()
+        
+        self.es = EarlyStopping(
+            monitor='val_loss',
+            mode='min',
+            patience=config['patience'],
+            restore_best_weights=True,
+            verbose=1
+        )
+
+    def train_epoch(self, train_loader):
+        self.model.train()
+        total_loss = 0.0
+        for batch_x, batch_y in tqdm(train_loader, desc="Training LSTM"):
+            batch_x = batch_x.to(self.device)
+            batch_y = batch_y.to(self.device)
+            
+            self.optimizer.zero_grad()
+            output = self.model(batch_x)
+            loss = self.criterion(output, batch_y)
+            loss.backward()
+            self.optimizer.step()
+            total_loss += loss.item()
+        return total_loss / len(train_loader)
+
+    def validate(self, val_loader):
+        if val_loader is None:
+            return 0.0
+        self.model.eval()
+        total_loss = 0.0
+        with torch.no_grad():
+            for batch_x, batch_y in val_loader:
+                batch_x = batch_x.to(self.device)
+                batch_y = batch_y.to(self.device)
+                
+                output = self.model(batch_x)
+                loss = self.criterion(output, batch_y)
+                total_loss += loss.item()
+        return total_loss / len(val_loader)
+
+    def train(self, train_loader, val_loader, epochs):
+        for epoch in range(epochs):
+            if self.es.stop_training:
+                break
+            
+            train_loss = self.train_epoch(train_loader)
+            val_loss = self.validate(val_loader)
+            print(f"Epoch {epoch + 1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+            
+            # Early Stopping 체크
+            self.es(val_loss, self.model, epoch)
+
+    def predict(self, test_loader):
+        self.model.eval()
+        predictions = []
+        with torch.no_grad():
+            for batch_x, _ in test_loader:
+                batch_x = batch_x.to(self.device)
+                batch_y = batch_y.to(self.device)
+                
+                output = self.model(batch_x)
+                predictions.append(output.cpu().numpy())
+        return np.concatenate(predictions, axis=0)

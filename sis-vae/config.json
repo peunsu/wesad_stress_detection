@@ -1,13 +1,13 @@
 {
-    "exp_name": "ma-vae",
+    "exp_name": "sis-vae",
     "load_dir": "default",
     "window_size": 256,
-    "window_shift": 4,
+    "window_shift": 128,
     "features": 67,
-    "latent_dim": 64,
+    "latent_dim": 40,
     "batch_size": 256,
     "epochs": 10000,
-    "patience": 250,
+    "patience": 50,
     "seed": 42,
     "TRAIN_VAE": 1
 }

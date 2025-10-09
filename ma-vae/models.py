@@ -204,10 +204,13 @@ class MA_VAE(nn.Module):
         # beta는 훈련 루프에서 외부적으로 관리
         self.beta = beta 
         
-    def loss_fn(self, X, Xhat, z_mean, z_log_var):     
-        batch_size = X.size(0) 
-        recon_loss = F.mse_loss(Xhat, X, reduction='mean')
-        kl_loss = -0.5 * torch.mean(1 + z_log_var - z_mean.pow(2) - z_log_var.exp())
+    def loss_fn(self, X, Xhat, z_mean, z_log_var):
+        recon_loss = torch.mean(
+            torch.sum((X - Xhat).pow(2), dim=[1, 2])
+        )
+        kl_loss = -0.5 * torch.mean(
+            torch.sum(1 + z_log_var - z_mean.pow(2) - z_log_var.exp(), dim=1)
+        )
         return recon_loss, kl_loss
 
     # Custom Training Step

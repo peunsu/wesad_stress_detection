@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
 
 
 def depth_to_space_2d(x, block_size):
@@ -226,7 +225,7 @@ class VAEmodel(nn.Module):
             x = depth_to_space_2d(x, 2)
             x = x.view(b, 6, self.l_win, 1)
 
-            x = self.dec_out(x)
+            x = self.dec_out(x) # (B, n_channel, l_win, 1)
         else:
             raise ValueError(f"Unsupported window length: {self.l_win}")
 
@@ -266,60 +265,3 @@ class LSTMModel(nn.Module):
         x, _ = self.lstm2(x)
         x, _ = self.lstm3(x)
         return x
-
-
-class LSTMTrainer:
-    def __init__(self, model, config):
-        self.model = model
-        self.config = config
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.optimizer = optim.Adam(model.parameters(), lr=config['learning_rate_lstm'])
-        self.criterion = nn.MSELoss()
-
-    def train_epoch(self, train_loader):
-        self.model.train()
-        total_loss = 0.0
-        for batch_x, batch_y in train_loader:
-            batch_x = batch_x.to(self.device)
-            batch_y = batch_y.to(self.device)
-            
-            self.optimizer.zero_grad()
-            output = self.model(batch_x)
-            loss = self.criterion(output, batch_y)
-            loss.backward()
-            self.optimizer.step()
-            total_loss += loss.item()
-        return total_loss / len(train_loader)
-
-    def validate(self, val_loader):
-        if val_loader is None:
-            return 0.0
-        self.model.eval()
-        total_loss = 0.0
-        with torch.no_grad():
-            for batch_x, batch_y in val_loader:
-                batch_x = batch_x.to(self.device)
-                batch_y = batch_y.to(self.device)
-                
-                output = self.model(batch_x)
-                loss = self.criterion(output, batch_y)
-                total_loss += loss.item()
-        return total_loss / len(val_loader)
-
-    def train(self, train_loader, val_loader, epochs):
-        for epoch in range(epochs):
-            train_loss = self.train_epoch(train_loader)
-            val_loss = self.validate(val_loader)
-            print(f"Epoch {epoch + 1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
-
-    def predict(self, test_loader):
-        self.model.eval()
-        predictions = []
-        with torch.no_grad():
-            for batch_x, _ in test_loader:
-                batch_x = batch_x.to(self.device)
-                batch_y = batch_y.to(self.device)
-                
-                output = self.model(batch_x)
-                predictions.append(output.cpu().numpy())
-        return np.concatenate(predictions, axis=0)
