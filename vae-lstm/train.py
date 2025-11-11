@@ -46,22 +46,6 @@ def load_latest_lstm_checkpoint(trainer, checkpoint_dir):
     print(f"Loaded LSTM checkpoint: {latest_checkpoint}")
     return True
 
-# VAE 모델을 사용해서 입력된 sequence를 latent space embedding(mu vector)로 변환
-def generate_lstm_embeddings(model, sequences, device):
-    model.eval()
-    l_seq = sequences.shape[1] # sequence 길이
-    code_size = model.code_size # latent space embedding의 차원
-    embeddings = np.zeros((len(sequences), l_seq, code_size), dtype=np.float32) # 결과 저장할 numpy 배열
-
-    with torch.no_grad():
-        for idx in tqdm(range(len(sequences))):
-            batch = torch.from_numpy(sequences[idx]).float().to(device)  # (l_seq, l_win, n_channel) => sequece 데이터 tensor로 변환
-            recon, mu, std = model(batch)
-            embeddings[idx] = mu.cpu().numpy()  # mu 벡터를 numpy 배열로 변환하여 저장
-
-    return embeddings # (num_sequences, l_seq, code_size) 형태의 numpy 배열 반환, 각 sequence는 l_seq 길이의 latent space embedding (code_size 크기의 mu 벡터)로 표현됨
-
-
 def main():
     try:
         args = get_args()
@@ -83,7 +67,7 @@ def main():
 
     vae_model = VAEmodel(config).to(device)
     vae_trainer = VAETrainer(vae_model, data, config)
-    train_loader, val_loader = data.get_vae_dataloaders(config['batch_size'])
+    train_loader, val_loader = data.get_vae_dataloaders()
 
     # config 확인해서 VAE 모델 학습 or 불러오기
     if config['TRAIN_VAE'] and config['num_epochs_vae'] > 0:
@@ -98,10 +82,10 @@ def main():
 
         print("Generating embeddings for LSTM training...")
         
-        train_embeddings_loader, val_embeddings_loader = data.get_embeddings_dataloaders(config['batch_size_lstm'])
+        train_lstm_loader, val_lstm_loader = data.get_lstm_dataloaders()
         
-        train_embeddings = vae_trainer.generate_embeddings(train_embeddings_loader)
-        val_embeddings = vae_trainer.generate_embeddings(val_embeddings_loader)
+        train_embeddings = vae_trainer.generate_embeddings(train_lstm_loader)
+        val_embeddings = vae_trainer.generate_embeddings(val_lstm_loader)
 
         x_train = train_embeddings[:, :-1]
         y_train = train_embeddings[:, 1:]

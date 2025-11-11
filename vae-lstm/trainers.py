@@ -289,7 +289,7 @@ class VAETrainer:
         embeddings = []
         
         with torch.no_grad():
-            for batch_data in data_loader:
+            for batch_data in tqdm(data_loader):
                 if isinstance(batch_data, (list, tuple)):
                     batch_data = batch_data[0]
                 
