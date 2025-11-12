@@ -86,7 +86,7 @@ class DataGenerator:
         
         # subject_id별로 그룹화해서 딕셔너리 형태로 저장
         self.data = {
-            'training': {
+            'train': {
                 sid: group.to_numpy()
                 for sid, group in train_df_normalized.groupby(train_subjects)
             },
@@ -96,7 +96,7 @@ class DataGenerator:
         }
 
     def create_vae_sets(self):
-        dataset = VAEDataset(self.data['training'], self.config['l_win'])
+        dataset = VAEDataset(self.data['train'], self.config['l_win'])
         n_total = len(dataset)
         n_val = int(n_total * 0.1)
         n_train = n_total - n_val
@@ -104,7 +104,7 @@ class DataGenerator:
         self.test_set_vae = VAEDataset(self.data['test'], self.config['l_win'])
     
     def create_lstm_sets(self):
-        dataset = LSTMDataset(self.data['training'], self.config['l_win'], self.config['l_seq'])
+        dataset = LSTMDataset(self.data['train'], self.config['l_win'], self.config['l_seq'])
         n_total = len(dataset)
         n_val = int(n_total * 0.1)
         n_train = n_total - n_val

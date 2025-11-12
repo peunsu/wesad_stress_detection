@@ -91,15 +91,15 @@ class VAETrainer:
         
         # Sigma regularizer (matching TensorFlow)
         # -D/2 * log(sigma^2*2*pi)
-        # sigma_regularizer = self.model.input_dims / 2 * torch.log(sigma2) #  정규분포에서의 분산값을 정규화하기 위한 항
-        # two_pi = self.model.input_dims / 2 * torch.tensor(2 * np.pi, device=sigma2.device)
+        sigma_regularizer = self.model.input_dims / 2 * torch.log(sigma2) #  정규분포에서의 분산값을 정규화하기 위한 항
+        two_pi = self.model.input_dims / 2 * torch.tensor(2 * np.pi, device=sigma2.device)
         
         # ELBO loss (matching TensorFlow exactly)
         # 일반적으로 VAE의 ELBO는 reconstruction error / (2*sigma^2) + KL loss 형태 
         # 여기서는 TensorFlow 코드와 맞추기 위해 two_pi와 sigma_regularizer 항을 추가했음.
         # 하지만 논문이나 일반적인 구현에서는 two_pi, sigma_regularizer 항은 보통 포함하지 않음.
-        #elbo_loss = two_pi + sigma_regularizer + 0.5 * weighted_reconstruction_error + kl_loss
-        elbo_loss = 0.5 * weighted_reconstruction_error + kl_loss # 덧셈항 제거해도 그라디언트 계산에는 영향 없음
+        elbo_loss = two_pi + sigma_regularizer + 0.5 * weighted_reconstruction_error + kl_loss
+        # elbo_loss = 0.5 * weighted_reconstruction_error + kl_loss # 덧셈항 제거해도 그라디언트 계산에는 영향 없음
         
         return elbo_loss, weighted_reconstruction_error, kl_loss
     

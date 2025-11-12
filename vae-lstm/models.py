@@ -12,34 +12,21 @@ def depth_to_space_2d(x, block_size):
     x = x.view(b, new_c, block_size, block_size, h, w)
     # Rearrange to (b, new_c, h * block_size, w * block_size)
     x = x.permute(0, 1, 4, 2, 5, 3).contiguous()
-    return x.view(b, new_c, h * block_size, w * block_size)
+    return x.view(b, new_c, h * block_size, w * block_size)    
 
-
-class VAEmodel(nn.Module):
-    # feature을 따로 처리하지 않고 하나로 합쳐서 input vector로 처리
+class VAEEncoder(nn.Module):
     def __init__(self, config):
-        super(VAEmodel, self).__init__()
+        super(VAEEncoder, self).__init__()
         self.config = config
-        self.input_dims = config['l_win'] * config['n_channel'] # input data= window length * channel(feature) 수
         self.code_size = config['code_size'] # latent variable 차원
-        self.num_hidden_units = config['num_hidden_units'] 
+        self.num_hidden_units = config['num_hidden_units']
         self.l_win = config['l_win'] # window length
         self.n_channel = config['n_channel'] # input data channel 수
-        self.sigma2_offset = config['sigma2_offset'] # variance offset 설정 => 수치적 안정성
-        self.train_sigma = (config['TRAIN_sigma'] == 1) # sigma 파라미터 학습 여부
-
-        self._build_encoder()
-        self._build_decoder()
-
-        if self.train_sigma:
-            self.sigma = nn.Parameter(torch.tensor(config['sigma'], dtype=torch.float32))
-        else:
-            self.register_buffer('sigma', torch.tensor(config['sigma'], dtype=torch.float32))
-
-    # 4개의 Conv2d layer
-    # channel 수는 늘어나고, feature map의 크기는 감소 + 시계열 특성에 맞게 kernel size 조절(직사각형)
-    # 시간축에서 여러 시점을 한 번에 보면서 feature 간 상관관계를 효과적으로 추출할
-    def _build_encoder(self):
+        
+        
+        # 4개의 Conv2d layer
+        # channel 수는 늘어나고, feature map의 크기는 감소 + 시계열 특성에 맞게 kernel size 조절(직사각형)
+        # 시간축에서 여러 시점을 한 번에 보면서 feature 간 상관관계를 효과적으로 추출할
         if self.l_win == 24:
             self._encoder_symmetric_pad = True
             self.enc_conv1 = nn.Conv2d(self.n_channel, self.num_hidden_units // 16,
@@ -100,8 +87,42 @@ class VAEmodel(nn.Module):
         self.enc_fc = nn.Linear(self.num_hidden_units, self.code_size * 4)
         self.enc_fc_mean = nn.Linear(self.code_size * 4, self.code_size) # mean vector
         self.enc_fc_std = nn.Linear(self.code_size * 4, self.code_size) # std vector
+    
+    def forward(self, x):
+        # x shape: (B, l_win, n_channel) or (B, l_win)
+        if x.dim() == 2:
+            x = x.unsqueeze(-1)            
+            
+        x = x.view(-1, self.l_win, self.n_channel) # (B, l_win, n_channel)
+        x = x.permute(0, 2, 1)  # (B, n_channel, l_win)
 
-    def _build_decoder(self):
+        x = x.unsqueeze(-1)  # (B, n_channel, l_win, 1)
+
+        if getattr(self, '_encoder_symmetric_pad', False):
+            x = F.pad(x, (0, 0, 4, 4), mode='reflect')
+
+        x = F.leaky_relu(self.enc_conv1(x), negative_slope=0.2) # 0보다 작을 때 기울기 => hyperparameter
+        x = F.leaky_relu(self.enc_conv2(x), negative_slope=0.2)
+        x = F.leaky_relu(self.enc_conv3(x), negative_slope=0.2)
+        x = F.leaky_relu(self.enc_conv4(x), negative_slope=0.2)
+
+        x = torch.flatten(x, start_dim=1)
+        x = F.leaky_relu(self.enc_fc(x), negative_slope=0.2)
+
+        mean = self.enc_fc_mean(x)
+        std = F.relu(self.enc_fc_std(x)) + 1e-2
+
+        return mean, std
+
+class VAEDecoder(nn.Module):
+    def __init__(self, config):
+        super(VAEDecoder, self).__init__()
+        self.config = config
+        self.code_size = config['code_size'] # latent variable 차원
+        self.num_hidden_units = config['num_hidden_units']
+        self.l_win = config['l_win'] # window length
+        self.n_channel = config['n_channel'] # input data channel 수
+        
         self.dec_fc = nn.Linear(self.code_size, self.num_hidden_units)
 
         if self.l_win == 24:
@@ -139,36 +160,8 @@ class VAEmodel(nn.Module):
                                       kernel_size=(9, 1), padding=(4, 0))
         else:
             raise ValueError(f"Unsupported window length: {self.l_win}")
-
-    def encode(self, x):        
-        if x.dim() == 2:
-            x = x.unsqueeze(-1)
-        x = x.view(-1, self.l_win, self.n_channel) # (B, l_win, n_channel)
-        x = x.permute(0, 2, 1)  # (B, n_channel, l_win)
-
-        x = x.unsqueeze(-1)  # (B, n_channel, l_win, 1)
-
-        if getattr(self, '_encoder_symmetric_pad', False):
-            x = F.pad(x, (0, 0, 4, 4), mode='reflect')
-
-        x = F.leaky_relu(self.enc_conv1(x), negative_slope=0.2) # 0보다 작을 때 기울기 => hyperparameter
-        x = F.leaky_relu(self.enc_conv2(x), negative_slope=0.2)
-        x = F.leaky_relu(self.enc_conv3(x), negative_slope=0.2)
-        x = F.leaky_relu(self.enc_conv4(x), negative_slope=0.2)
-
-        x = torch.flatten(x, start_dim=1)
-        x = F.leaky_relu(self.enc_fc(x), negative_slope=0.2)
-
-        mean = self.enc_fc_mean(x)
-        std = F.relu(self.enc_fc_std(x)) + 1e-2
-
-        return mean, std
-
-    def reparameterize(self, mean, std):
-        eps = torch.randn_like(std)
-        return mean + eps * std
-
-    def decode(self, z):
+    
+    def forward(self, z):
         x = F.leaky_relu(self.dec_fc(z), negative_slope=0.2)
         x = x.view(-1, self.num_hidden_units, 1, 1)
 
@@ -234,6 +227,33 @@ class VAEmodel(nn.Module):
         x = x.permute(0, 2, 1)  # (B, l_win, n_channel))
         return x
 
+class VAEmodel(nn.Module):
+    # feature을 따로 처리하지 않고 하나로 합쳐서 input vector로 처리
+    def __init__(self, config):
+        super(VAEmodel, self).__init__()
+        self.config = config
+        self.input_dims = config['l_win'] * config['n_channel'] # input data = window length * channel(feature) 수
+        self.sigma2_offset = config['sigma2_offset'] # variance offset 설정 => 수치적 안정성
+        self.train_sigma = (config['TRAIN_sigma'] == 1) # sigma 파라미터 학습 여부
+        
+        self.encoder = VAEEncoder(config)
+        self.decoder = VAEDecoder(config)
+
+        if self.train_sigma:
+            self.sigma = nn.Parameter(torch.tensor(config['sigma'], dtype=torch.float32))
+        else:
+            self.register_buffer('sigma', torch.tensor(config['sigma'], dtype=torch.float32))
+    
+    def encode(self, x):
+        return self.encoder(x)
+
+    def decode(self, z):
+        return self.decoder(z)
+    
+    def reparameterize(self, mean, std):
+        eps = torch.randn_like(std)
+        return mean + eps * std
+
     def forward(self, x):
         mean, std = self.encode(x)
         z = self.reparameterize(mean, std)
@@ -246,7 +266,6 @@ class VAEmodel(nn.Module):
         if self.train_sigma:
             sigma2 = sigma2 + self.sigma2_offset
         return sigma2
-
 
 class LSTMModel(nn.Module):
     def __init__(self, config):
