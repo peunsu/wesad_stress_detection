@@ -35,17 +35,12 @@ def process_config(json_file):
     else:
         save_dir = Path(config['load_dir'])
     # specify the saving folder name for this experiment
-    if config['TRAIN_sigma'] == 1:
-        save_name = f'{config["exp_name"]}-{config["l_win"]}-{config["l_seq"]}-{config["code_size"]}-trainSigma'
-    else:
-        save_name = f'{config["exp_name"]}-{config["l_win"]}-{config["l_seq"]}-{config["code_size"]}-fixedSigma-{config["sigma"]}'
+    save_name = f'{config["exp_name"]}-{config["l_win"]}-{config["l_seq"]}-{config["code_size"]}'
     config['summary_dir'] = str(save_dir / save_name / "summary/")
     config['result_dir'] = str(save_dir / save_name / "result/")
     config['checkpoint_dir'] = str(save_dir / save_name / "checkpoint/")
-    config['checkpoint_dir_lstm'] = str(save_dir / save_name / "checkpoint/lstm/")
 
     return config
-
 
 def create_dirs(dirs):
     """

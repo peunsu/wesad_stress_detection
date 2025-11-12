@@ -267,22 +267,15 @@ class VAEmodel(nn.Module):
         recon = self.decode(z)
         return recon, mean, std
 
-class VAE_LSTM_Model(nn.Module):
+class VAELSTMModel(nn.Module):
     def __init__(self, config):
-        super(VAE_LSTM_Model, self).__init__()
+        super(VAELSTMModel, self).__init__()
         self.config = config
         
         self.input_dims = config['l_win'] * config['n_channel'] # input data = window length * channel(feature) 수
-        self.sigma2_offset = config['sigma2_offset'] # variance offset 설정 => 수치적 안정성
-        self.train_sigma = (config['TRAIN_sigma'] == 1) # sigma 파라미터 학습 여부
         
         self.vae = VAEmodel(config)
         self.lstm = LSTMModel(config)
-        
-        if self.train_sigma:
-            self.sigma = nn.Parameter(torch.tensor(config['sigma'], dtype=torch.float32))
-        else:
-            self.register_buffer('sigma', torch.tensor(config['sigma'], dtype=torch.float32))
         
     def forward(self, x):
         # x shape: (B, l_seq, l_win, n_channel)
@@ -294,10 +287,3 @@ class VAE_LSTM_Model(nn.Module):
         x_recon = self.vae.decode(z_pred) # (B, l_seq - 1, l_win, n_channel)
 
         return x_recon, mean, std
-    
-    # 학습 중 VAE의 분산값에 안정성과 유연성을 추가
-    def get_sigma2(self):
-        sigma2 = torch.square(self.sigma)
-        if self.train_sigma:
-            sigma2 = sigma2 + self.sigma2_offset
-        return sigma2

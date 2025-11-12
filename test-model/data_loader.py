@@ -4,27 +4,7 @@ import torch
 from pathlib import Path
 from torch.utils.data import DataLoader, Dataset, random_split
 
-class VAEDataset(Dataset):
-    def __init__(self, data, l_win):
-        self.data = data
-        self.l_win = l_win
-        
-        self.indices = []
-        for sid, subject_data in self.data.items():
-            n_sample = len(subject_data)
-            n_vae = n_sample - l_win + 1
-            for i in range(n_vae):
-                self.indices.append((sid, i))
-    
-    def __len__(self):
-        return len(self.indices)
-    
-    def __getitem__(self, idx):
-        sid, i = self.indices[idx]
-        sample = self.data[sid][i:i+self.l_win]
-        return torch.from_numpy(sample).float()
-
-class LSTMDataset(Dataset):
+class VAELSTMDataset(Dataset):
     def __init__(self, data, l_win, l_seq):
         self.data = data
         self.l_win = l_win
@@ -55,8 +35,7 @@ class DataGenerator:
     def __init__(self, config):
         self.config = config
         self.load_dataset()
-        self.create_vae_sets()
-        self.create_lstm_sets()
+        self.create_datasets()
         
     def load_dataset(self):
         data_dir = Path('../data')
@@ -94,39 +73,21 @@ class DataGenerator:
                 'test_sid': test_df_normalized.to_numpy() # Test set은 subject_id를 구분하지 않고 모두 합쳐서 사용
             }
         }
-
-    def create_vae_sets(self):
-        dataset = VAEDataset(self.data['train'], self.config['l_win'])
+    
+    def create_datasets(self):
+        dataset = VAELSTMDataset(self.data['train'], self.config['l_win'], self.config['l_seq'])
         n_total = len(dataset)
         n_val = int(n_total * 0.1)
         n_train = n_total - n_val
-        self.train_set_vae, self.val_set_vae = random_split(dataset, [n_train, n_val])
-        self.test_set_vae = VAEDataset(self.data['test'], self.config['l_win'])
+        self.train_set, self.val_set = random_split(dataset, [n_train, n_val])
+        self.test_set = VAELSTMDataset(self.data['test'], self.config['l_win'], self.config['l_seq'])
     
-    def create_lstm_sets(self):
-        dataset = LSTMDataset(self.data['train'], self.config['l_win'], self.config['l_seq'])
-        n_total = len(dataset)
-        n_val = int(n_total * 0.1)
-        n_train = n_total - n_val
-        self.train_set_lstm, self.val_set_lstm = random_split(dataset, [n_train, n_val])
-        self.test_set_lstm = LSTMDataset(self.data['test'], self.config['l_win'], self.config['l_seq'])
-    
-    def get_vae_dataloaders(self, test=False):
-        train_loader = DataLoader(self.train_set_vae, batch_size=self.config['batch_size'], shuffle=True)
-        val_loader = DataLoader(self.val_set_vae, batch_size=self.config['batch_size'], shuffle=False)
+    def get_dataloaders(self, test=False):
+        train_loader = DataLoader(self.train_set, batch_size=self.config['batch_size'], shuffle=True)
+        val_loader = DataLoader(self.val_set, batch_size=self.config['batch_size'], shuffle=False)
         
         if test:
-            test_loader = DataLoader(self.test_set_vae, batch_size=self.config['batch_size'], shuffle=False)
-            return train_loader, val_loader, test_loader
-        
-        return train_loader, val_loader
-    
-    def get_lstm_dataloaders(self, test=False):
-        train_loader = DataLoader(self.train_set_lstm, batch_size=self.config['batch_size_lstm'], shuffle=True)
-        val_loader = DataLoader(self.val_set_lstm, batch_size=self.config['batch_size_lstm'], shuffle=False)
-        
-        if test:
-            test_loader = DataLoader(self.test_set_lstm, batch_size=self.config['batch_size_lstm'], shuffle=False)
+            test_loader = DataLoader(self.test_set, batch_size=self.config['batch_size'], shuffle=False)
             return train_loader, val_loader, test_loader
         
         return train_loader, val_loader

@@ -1,12 +1,10 @@
 import random
 import torch
 import numpy as np
-from tqdm import tqdm
 from pathlib import Path
-from torch.utils.data import DataLoader, TensorDataset
 
 
-from models import VAEmodel, LSTMModel, VAE_LSTM_Model
+from models import VAELSTMModel
 from data_loader import DataGenerator
 from trainers import VAELSTMTrainer
 from utils import process_config, create_dirs, get_args, save_config
@@ -33,19 +31,6 @@ def load_latest_vae_checkpoint(trainer, checkpoint_dir):
     print(f"Loaded VAE checkpoint: {latest_checkpoint}")
     return True
 
-def load_latest_lstm_checkpoint(trainer, checkpoint_dir):
-    if not Path(checkpoint_dir).is_dir():
-        return False
-
-    checkpoint_files = [f for f in Path(checkpoint_dir).iterdir() if f.name.startswith('lstm_checkpoint') and f.name.endswith('.pth')]
-    if not checkpoint_files:
-        return False
-
-    latest_checkpoint = max(checkpoint_files, key=lambda x: int(x.name.split('_')[-1].split('.')[0]))
-    trainer.load_model(Path(checkpoint_dir) / latest_checkpoint)
-    print(f"Loaded LSTM checkpoint: {latest_checkpoint}")
-    return True
-
 def main():
     try:
         args = get_args()
@@ -54,7 +39,7 @@ def main():
         print("missing or invalid arguments")
         exit(0)
 
-    create_dirs([config['result_dir'], config['checkpoint_dir'], config['checkpoint_dir_lstm']])
+    create_dirs([config['result_dir'], config['checkpoint_dir']])
     save_config(config)
 
     seed = config.get('seed', 42)
@@ -65,13 +50,13 @@ def main():
 
     data = DataGenerator(config)
 
-    vae_model = VAE_LSTM_Model(config).to(device)
+    vae_model = VAELSTMModel(config).to(device)
     vae_trainer = VAELSTMTrainer(vae_model, data, config)
-    train_loader, val_loader = data.get_lstm_dataloaders()
+    train_loader, val_loader = data.get_dataloaders()
 
     # config 확인해서 VAE 모델 학습 or 불러오기
-    if config['TRAIN_VAE'] and config['num_epochs_vae'] > 0:
-        vae_trainer.train(train_loader, val_loader, config['num_epochs_vae'])
+    if config['TRAIN_VAE'] and config['num_epochs'] > 0:
+        vae_trainer.train(train_loader, val_loader, config['num_epochs'])
     else:
         if not load_latest_vae_checkpoint(vae_trainer, config['checkpoint_dir']):
             raise RuntimeError("VAE training disabled and no checkpoint found to load.")

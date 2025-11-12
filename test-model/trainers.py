@@ -1,9 +1,7 @@
-import os
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn.utils import clip_grad_value_
 from tqdm import tqdm
@@ -95,8 +93,17 @@ class VAELSTMTrainer:
         self.model.to(self.device)
         
         # Optimizer
-        self.base_lr = config['learning_rate_vae']
+        self.base_lr = config['learning_rate']
+        self.beta = config.get('vae_beta', 0.0001)
         self.optimizer = optim.Adam(model.parameters(), lr=self.base_lr, betas=(0.9, 0.95))
+        self.annealing = KLAnnealingHelper(
+            annealing_epochs=20,
+            type="cyclical",
+            grace_period=20,
+            start=0.0001,
+            end=0.1,
+            lower_initial_betas=False,
+        )
         self.es = EarlyStopping(
             monitor='val_loss',
             mode='min',
@@ -112,13 +119,11 @@ class VAELSTMTrainer:
         self.recon_losses = []
         
         # Create directories
-        os.makedirs(config['checkpoint_dir'], exist_ok=True)
-        os.makedirs(config['result_dir'], exist_ok=True)
+        Path(config['checkpoint_dir']).mkdir(parents=True, exist_ok=True)
+        Path(config['result_dir']).mkdir(parents=True, exist_ok=True)
     
-    def vae_loss(self, recon_x, x, mu, std_dev, sigma2):
-        """Calculate VAE loss (ELBO) - exactly matching TensorFlow version"""
-        # KL divergence loss - analytical result (matching TensorFlow)
-        # KL divergence loss = 0.5 * (mean^2 + std^2 - log(std^2) - code_size) => 수업 시간 코드에 나와있는 코드와 동일
+    def vae_loss(self, recon_x, x, mu, std_dev):
+        """Calculate VAE loss"""
         kl_loss = 0.5 * torch.mean(
             torch.sum(mu.pow(2), dim=1) +
             torch.sum(std_dev.pow(2), dim=1) -
@@ -126,25 +131,13 @@ class VAELSTMTrainer:
             self.config['code_size']
         )
         
-        # Weighted reconstruction error (matching TensorFlow)
-        # MSE = (x - recon_x)^2 => 수업 시간 코드에 나와있는 코드와 동일
-        weighted_reconstruction_error = torch.mean(
+        recon_loss = torch.mean(
             torch.sum((x[:, 1:, :] - recon_x).pow(2), dim=[1, 2])
-        ) / (2 * sigma2)
+        )
         
-        # Sigma regularizer (matching TensorFlow)
-        # -D/2 * log(sigma^2*2*pi)
-        sigma_regularizer = self.model.input_dims / 2 * torch.log(sigma2) #  정규분포에서의 분산값을 정규화하기 위한 항
-        two_pi = self.model.input_dims / 2 * torch.tensor(2 * np.pi, device=sigma2.device)
+        loss = recon_loss + self.beta * kl_loss
         
-        # ELBO loss (matching TensorFlow exactly)
-        # 일반적으로 VAE의 ELBO는 reconstruction error / (2*sigma^2) + KL loss 형태 
-        # 여기서는 TensorFlow 코드와 맞추기 위해 two_pi와 sigma_regularizer 항을 추가했음.
-        # 하지만 논문이나 일반적인 구현에서는 two_pi, sigma_regularizer 항은 보통 포함하지 않음.
-        loss = two_pi + sigma_regularizer + 0.5 * weighted_reconstruction_error + kl_loss
-        # loss = 0.5 * weighted_reconstruction_error + kl_loss # 덧셈항 제거해도 그라디언트 계산에는 영향 없음
-        
-        return loss, weighted_reconstruction_error, kl_loss
+        return loss, recon_loss, kl_loss
     
     def train_epoch(self, train_loader, epoch, epochs):
         """Train for one epoch"""
@@ -165,8 +158,7 @@ class VAELSTMTrainer:
             recon_batch, mu, std_dev = self.model(batch_data)
 
             # Calculate loss
-            sigma2 = self.model.get_sigma2()
-            loss, recon_loss, kl_loss = self.vae_loss(recon_batch, batch_data, mu, std_dev, sigma2)
+            loss, recon_loss, kl_loss = self.vae_loss(recon_batch, batch_data, mu, std_dev)
 
             # Backward pass
             loss.backward()
@@ -195,15 +187,14 @@ class VAELSTMTrainer:
             for batch_data in tqdm(val_loader, desc=f"Epoch {epoch+1}/{epochs} (Val)"):
                 if isinstance(batch_data, (list, tuple)):
                     batch_data = batch_data[0]
-                
+
                 batch_data = batch_data.to(self.device)
                 
                 # Forward pass
                 recon_batch, mu, std_dev = self.model(batch_data)
                 
                 # Calculate loss
-                sigma2 = self.model.get_sigma2()
-                loss, recon_loss, kl_loss = self.vae_loss(recon_batch, batch_data, mu, std_dev, sigma2)
+                loss, recon_loss, kl_loss = self.vae_loss(recon_batch, batch_data, mu, std_dev)
                 
                 # Accumulate losses
                 total_loss += loss.item()
@@ -217,8 +208,8 @@ class VAELSTMTrainer:
         return avg_loss, avg_recon_loss, avg_kl_loss
     
     def train(self, train_loader, val_loader, epochs):
-        """Train the VAE model"""
-        print("Starting VAE training...")
+        """Train the VAE-LSTM model"""
+        print("Starting VAE-LSTM training...")
 
         for epoch in range(epochs):
             if self.es.stop_training:
@@ -227,6 +218,9 @@ class VAELSTMTrainer:
             current_lr = self.base_lr * (0.98 ** epoch)
             for param_group in self.optimizer.param_groups:
                 param_group['lr'] = current_lr
+            
+            self.beta = self.annealing.get_beta(epoch)
+            self.annealing.print_status(epoch)
 
             # Training
             train_loss, train_recon, train_kl = self.train_epoch(train_loader, epoch, epochs)
@@ -243,7 +237,7 @@ class VAELSTMTrainer:
             # Print progress
             print(f"Epoch {epoch+1}/{epochs} - train loss: {train_loss:.6f} - recon_loss: {train_recon:.6f} - kl_loss: {train_kl:.6f}")
             print(f"Epoch {epoch+1}/{epochs} - val loss: {val_loss:.6f} - recon_loss: {val_recon:.6f} - kl_loss: {val_kl:.6f}")
-            print(f"Epoch {epoch+1}/{epochs} - LR: {current_lr:.6f} - Sigma2: {self.model.get_sigma2().item():.4f}")
+            print(f"Epoch {epoch+1}/{epochs} - LR: {current_lr:.6f}")
             
             # Early Stopping 체크
             self.es(val_loss, self.model, epoch)
@@ -268,12 +262,12 @@ class VAELSTMTrainer:
             'kl_losses': self.kl_losses
         }
         
-        torch.save(checkpoint, f"{self.config['checkpoint_dir']}/vae_checkpoint_epoch_{epoch+1}.pth")
+        torch.save(checkpoint, Path(self.config['checkpoint_dir']) / f"vae_checkpoint_epoch_{epoch+1}.pth")
         print(f"Model saved at epoch {epoch+1}")
     
     def load_model(self, checkpoint_path):
         """Load model checkpoint"""
-        if os.path.exists(checkpoint_path):
+        if Path(checkpoint_path).exists():
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -314,45 +308,6 @@ class VAELSTMTrainer:
         axes[1, 0].legend()
         axes[1, 0].grid(True)
         
-        # Sigma2 over time
-        sigma2_values = [self.model.get_sigma2().item()] * len(self.train_losses)
-        axes[1, 1].plot(sigma2_values)
-        axes[1, 1].set_title('Sigma2 Parameter')
-        axes[1, 1].set_xlabel('Epoch')
-        axes[1, 1].set_ylabel('Sigma2')
-        axes[1, 1].grid(True)
-        
         plt.tight_layout()
-        plt.savefig(f"{self.config['result_dir']}/training_curves.pdf")
+        plt.savefig(Path(self.config['result_dir']) / "training_curves.pdf")
         plt.close()
-    
-    def generate_embeddings(self, data_loader):
-        """Generate embeddings for LSTM training"""
-        self.model.eval()
-        embeddings = []
-        
-        with torch.no_grad():
-            for batch_data in tqdm(data_loader):
-                if isinstance(batch_data, (list, tuple)):
-                    batch_data = batch_data[0]
-                
-                batch_data = batch_data.to(self.device)
-                mu, _ = self.model.encode(batch_data)
-
-                embedding = mu.view(batch_data.shape[0], -1, self.config['code_size'])
-                embeddings.append(embedding.cpu().numpy())
-        
-        return np.concatenate(embeddings, axis=0)
-    
-    def reconstruct_sequence(self, embeddings):
-        """Reconstruct sequence from embeddings"""
-        self.model.eval()
-        reconstructions = []
-        
-        with torch.no_grad():
-            for embedding in embeddings:
-                embedding_tensor = torch.FloatTensor(embedding).unsqueeze(0).to(self.device)
-                recon = self.model.decode(embedding_tensor)
-                reconstructions.append(recon.cpu().numpy())
-        
-        return np.concatenate(reconstructions, axis=0)
