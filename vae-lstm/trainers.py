@@ -345,8 +345,12 @@ class LSTMTrainer:
             output = self.model(batch_x)
             
             loss = torch.mean(
-                torch.sum((output - batch_y) ** 2, dim=[1, 2])
+                torch.sum((output[:, -1, :] - batch_y[:, -1, :]) ** 2, dim=1)
             )
+            
+            # loss = torch.mean(
+            #     torch.sum((output - batch_y) ** 2, dim=[1, 2])
+            # )
             
             loss.backward()
             self.optimizer.step()
@@ -366,8 +370,12 @@ class LSTMTrainer:
                 output = self.model(batch_x)
                 
                 loss = torch.mean(
-                    torch.sum((output - batch_y) ** 2, dim=[1, 2])
+                    torch.sum((output[:, -1, :] - batch_y[:, -1, :]) ** 2, dim=1)
                 )
+                
+                # loss = torch.mean(
+                #     torch.sum((output - batch_y) ** 2, dim=[1, 2])
+                # )
                 
                 total_loss += loss.item()
         return total_loss / len(val_loader)
