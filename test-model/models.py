@@ -21,8 +21,8 @@ class VAEEncoder(nn.Module):
         self.code_size = config['code_size'] # latent variable 차원
         self.num_hidden_units = config['num_hidden_units']
         self.l_win = config['l_win'] # window length
+        self.l_seq = config['l_seq'] # sequence length
         self.n_channel = config['n_channel'] # input data channel 수
-        
         
         # 4개의 Conv2d layer
         # channel 수는 늘어나고, feature map의 크기는 감소 + 시계열 특성에 맞게 kernel size 조절(직사각형)
@@ -89,14 +89,8 @@ class VAEEncoder(nn.Module):
         self.enc_fc_std = nn.Linear(self.code_size * 4, self.code_size) # std vector
     
     def forward(self, x):
-        # x shape: (B, l_win, n_channel) or (B, l_win)
-        if x.dim() == 2:
-            x = x.unsqueeze(-1)            
-            
-        x = x.view(-1, self.l_win, self.n_channel) # (B, l_win, n_channel)
-        x = x.permute(0, 2, 1)  # (B, n_channel, l_win)
-
-        x = x.unsqueeze(-1)  # (B, n_channel, l_win, 1)
+        # x shape: (B, l_seq, l_win, n_channel)
+        x = x.permute(0, 3, 2, 1)  # (B, n_channel, l_win, l_seq)
 
         if getattr(self, '_encoder_symmetric_pad', False):
             x = F.pad(x, (0, 0, 4, 4), mode='reflect')
@@ -104,13 +98,15 @@ class VAEEncoder(nn.Module):
         x = F.leaky_relu(self.enc_conv1(x), negative_slope=0.2) # 0보다 작을 때 기울기 => hyperparameter
         x = F.leaky_relu(self.enc_conv2(x), negative_slope=0.2)
         x = F.leaky_relu(self.enc_conv3(x), negative_slope=0.2)
-        x = F.leaky_relu(self.enc_conv4(x), negative_slope=0.2)
+        x = F.leaky_relu(self.enc_conv4(x), negative_slope=0.2) # (B, num_hidden_units, 1, l_seq)
+        
+        x = x.permute(0, 3, 2, 1) # (B, l_seq, 1, num_hidden_units)
 
-        x = torch.flatten(x, start_dim=1)
+        x = torch.flatten(x, start_dim=2) # (B, l_seq, num_hidden_units)
         x = F.leaky_relu(self.enc_fc(x), negative_slope=0.2)
 
-        mean = self.enc_fc_mean(x)
-        std = F.relu(self.enc_fc_std(x)) + 1e-2
+        mean = self.enc_fc_mean(x) # (B, l_seq, code_size)
+        std = F.relu(self.enc_fc_std(x)) + 1e-2 # (B, l_seq, code_size)
 
         return mean, std
 
@@ -119,11 +115,12 @@ class VAEDecoder(nn.Module):
         super(VAEDecoder, self).__init__()
         self.config = config
         self.code_size = config['code_size'] # latent variable 차원
-        self.num_hidden_units = config['num_hidden_units']
+        self.num_hidden_units = config['num_hidden_units'] # VAE hidden unit 수
         self.l_win = config['l_win'] # window length
+        self.l_seq = config['l_seq'] - 1 # sequence length
         self.n_channel = config['n_channel'] # input data channel 수
         
-        self.dec_fc = nn.Linear(self.code_size, self.num_hidden_units)
+        self.dec_fc = nn.Linear(self.code_size, self.num_hidden_units) # (B, l_seq, num_hidden_units)
 
         if self.l_win == 24:
             self.dec_conv1 = nn.Conv2d(self.num_hidden_units, self.num_hidden_units,
@@ -162,69 +159,87 @@ class VAEDecoder(nn.Module):
             raise ValueError(f"Unsupported window length: {self.l_win}")
     
     def forward(self, z):
-        x = F.leaky_relu(self.dec_fc(z), negative_slope=0.2)
-        x = x.view(-1, self.num_hidden_units, 1, 1)
+        # x shape: (B, l_seq, code_size)
+        x = F.leaky_relu(self.dec_fc(z), negative_slope=0.2) # (B, l_seq, num_hidden_units)
+        x = x.permute(0, 2, 1) # (B, num_hidden_units, l_seq)
+        x = x.view(-1, self.num_hidden_units, 1, self.l_seq)  # (B, num_hidden_units, 1, l_seq)
 
         if self.l_win == 24:
             x = F.leaky_relu(self.dec_conv1(x), negative_slope=0.2)
             b = x.size(0)
-            x = x.view(b, self.num_hidden_units // 4, 4, 1)
+            x = x.view(b, self.num_hidden_units // 4, 4, self.l_seq)
 
             x = F.leaky_relu(self.dec_conv2(x), negative_slope=0.2)
             x = depth_to_space_2d(x, 2)
-            x = x.view(b, self.num_hidden_units // 8, 8, 1)
-
+            x = x.view(b, self.num_hidden_units // 8, 8, self.l_seq)
+            
             x = F.leaky_relu(self.dec_conv3(x), negative_slope=0.2)
             x = depth_to_space_2d(x, 2)
-            x = x.view(b, self.num_hidden_units // 16, 16, 1)
+            x = x.view(b, self.num_hidden_units // 16, 16, self.l_seq)
 
             x = F.leaky_relu(self.dec_conv4(x), negative_slope=0.2)
             x = depth_to_space_2d(x, 2)
-            x = x.view(b, 16, self.l_win, 1)
-
+            x = x.view(b, 16, self.l_win, self.l_seq)
             x = self.dec_out(x)
         elif self.l_win == 48:
             x = F.leaky_relu(self.dec_conv1(x), negative_slope=0.2)
             b = x.size(0)
-            x = x.view(b, 256, 3, 1)
+            x = x.view(b, 256, 3, self.l_seq)
 
             x = F.leaky_relu(self.dec_conv2(x), negative_slope=0.2)
             x = depth_to_space_2d(x, 2)
-            x = x.view(b, 128, 6, 1)
-
+            x = x.view(b, 128, 6, self.l_seq)
+            
             x = F.leaky_relu(self.dec_conv3(x), negative_slope=0.2)
             x = depth_to_space_2d(x, 2)
-            x = x.view(b, 32, 24, 1)
+            x = x.view(b, 32, 24, self.l_seq)
 
             x = F.leaky_relu(self.dec_conv4(x), negative_slope=0.2)
             x = depth_to_space_2d(x, 2)
-            x = x.view(b, 16, self.l_win, 1)
+            x = x.view(b, 16, self.l_win, self.l_seq)
 
             x = self.dec_out(x)
         elif self.l_win == 144:
             x = F.leaky_relu(self.dec_conv1(x), negative_slope=0.2)
             b = x.size(0)
-            x = x.view(b, 32 * 9, 3, 1)
+            x = x.view(b, 32 * 9, 3, self.l_seq)
 
             x = F.leaky_relu(self.dec_conv2(x), negative_slope=0.2)
             x = depth_to_space_2d(x, 3)
-            x = x.view(b, 32 * 3, 9, 1)
-
+            x = x.view(b, 32 * 3, 9, self.l_seq)
+            
             x = F.leaky_relu(self.dec_conv3(x), negative_slope=0.2)
             x = depth_to_space_2d(x, 2)
-            x = x.view(b, 24, 36, 1)
+            x = x.view(b, 24, 36, self.l_seq)
 
             x = F.leaky_relu(self.dec_conv4(x), negative_slope=0.2)
             x = depth_to_space_2d(x, 2)
-            x = x.view(b, 6, self.l_win, 1)
-
-            x = self.dec_out(x) # (B, n_channel, l_win, 1)
+            x = x.view(b, 6, self.l_win, self.l_seq)
+            
+            x = self.dec_out(x)
         else:
             raise ValueError(f"Unsupported window length: {self.l_win}")
 
-        # Convert back to (batch, l_win, n_channel)
-        x = x.squeeze(-1)  # remove width dim
-        x = x.permute(0, 2, 1)  # (B, l_win, n_channel))
+        # x shape: (B, n_channel, l_win, l_seq)
+        x = x.permute(0, 3, 2, 1)  # (B, l_seq, l_win, n_channel)
+        return x
+
+class LSTMModel(nn.Module):
+    def __init__(self, config):
+        super(LSTMModel, self).__init__()
+        self.config = config
+        self.code_size = config['code_size']
+        self.num_hidden_units_lstm = config['num_hidden_units_lstm']
+
+        # lstm layer 3개
+        self.lstm1 = nn.LSTM(self.code_size, self.num_hidden_units_lstm, batch_first=True)
+        self.lstm2 = nn.LSTM(self.num_hidden_units_lstm, self.num_hidden_units_lstm, batch_first=True)
+        self.lstm3 = nn.LSTM(self.num_hidden_units_lstm, self.code_size, batch_first=True)
+
+    def forward(self, x):
+        x, _ = self.lstm1(x)
+        x, _ = self.lstm2(x)
+        x, _ = self.lstm3(x)
         return x
 
 class VAEmodel(nn.Module):
@@ -232,17 +247,9 @@ class VAEmodel(nn.Module):
     def __init__(self, config):
         super(VAEmodel, self).__init__()
         self.config = config
-        self.input_dims = config['l_win'] * config['n_channel'] # input data = window length * channel(feature) 수
-        self.sigma2_offset = config['sigma2_offset'] # variance offset 설정 => 수치적 안정성
-        self.train_sigma = (config['TRAIN_sigma'] == 1) # sigma 파라미터 학습 여부
         
         self.encoder = VAEEncoder(config)
         self.decoder = VAEDecoder(config)
-
-        if self.train_sigma:
-            self.sigma = nn.Parameter(torch.tensor(config['sigma'], dtype=torch.float32))
-        else:
-            self.register_buffer('sigma', torch.tensor(config['sigma'], dtype=torch.float32))
     
     def encode(self, x):
         return self.encoder(x)
@@ -260,84 +267,37 @@ class VAEmodel(nn.Module):
         recon = self.decode(z)
         return recon, mean, std
 
+class VAE_LSTM_Model(nn.Module):
+    def __init__(self, config):
+        super(VAE_LSTM_Model, self).__init__()
+        self.config = config
+        
+        self.input_dims = config['l_win'] * config['n_channel'] # input data = window length * channel(feature) 수
+        self.sigma2_offset = config['sigma2_offset'] # variance offset 설정 => 수치적 안정성
+        self.train_sigma = (config['TRAIN_sigma'] == 1) # sigma 파라미터 학습 여부
+        
+        self.vae = VAEmodel(config)
+        self.lstm = LSTMModel(config)
+        
+        if self.train_sigma:
+            self.sigma = nn.Parameter(torch.tensor(config['sigma'], dtype=torch.float32))
+        else:
+            self.register_buffer('sigma', torch.tensor(config['sigma'], dtype=torch.float32))
+        
+    def forward(self, x):
+        # x shape: (B, l_seq, l_win, n_channel)
+
+        mean, std = self.vae.encode(x) # (B, l_seq, code_size)
+        z = self.vae.reparameterize(mean, std) # (B, l_seq, code_size)
+        z = z[:, :-1, :] # (B, l_seq - 1, code_size)
+        z_pred = self.lstm(z) # (B, l_seq - 1, code_size)
+        x_recon = self.vae.decode(z_pred) # (B, l_seq - 1, l_win, n_channel)
+
+        return x_recon, mean, std
+    
     # 학습 중 VAE의 분산값에 안정성과 유연성을 추가
     def get_sigma2(self):
         sigma2 = torch.square(self.sigma)
         if self.train_sigma:
             sigma2 = sigma2 + self.sigma2_offset
         return sigma2
-
-# class LSTMModel(nn.Module):
-#     def __init__(self, config):
-#         super(LSTMModel, self).__init__()
-#         self.config = config
-#         self.code_size = config['code_size']
-#         self.num_hidden_units_lstm = config['num_hidden_units_lstm']
-
-#         # lstm layer 3개
-#         self.lstm1 = nn.LSTM(self.code_size, self.num_hidden_units_lstm, batch_first=True)
-#         self.lstm2 = nn.LSTM(self.num_hidden_units_lstm, self.num_hidden_units_lstm, batch_first=True)
-#         self.lstm3 = nn.LSTM(self.num_hidden_units_lstm, self.code_size, batch_first=True)
-
-#     def forward(self, x):
-#         x, _ = self.lstm1(x)
-#         x, _ = self.lstm2(x)
-#         x, _ = self.lstm3(x)
-#         return x
-
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=5000):
-        super(PositionalEncoding, self).__init__()
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)  # (1, max_len, d_model)
-        self.register_buffer('pe', pe)
-
-    def forward(self, x):
-        # x: (batch, seq_len, d_model)
-        seq_len = x.size(1)
-        return x + self.pe[:, :seq_len, :]
-
-class LSTMModel(nn.Module):
-    def __init__(self, config):
-        super(LSTMModel, self).__init__()
-        self.config = config
-        self.code_size = config['code_size']
-        self.d_model = config.get('d_model', 64)
-        self.num_layers = config.get('num_layers', 3)
-        self.num_heads = config.get('num_heads', 4)
-        self.dropout = config.get('dropout', 0.1)
-
-        # 입력 임베딩
-        self.input_fc = nn.Linear(self.code_size, self.d_model)
-
-        # 위치 인코딩
-        self.pos_encoder = PositionalEncoding(self.d_model)
-
-        # Transformer 인코더 레이어
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=self.d_model,
-            nhead=self.num_heads,
-            dim_feedforward=self.d_model * 4,
-            dropout=self.dropout,
-            batch_first=True,
-            activation=F.gelu
-        )
-        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=self.num_layers)
-
-        # 출력 변환
-        self.output_fc = nn.Linear(self.d_model, self.code_size)
-
-    def forward(self, x):
-        """
-        x: (batch, seq_len-1, code_size)  -> input sequence (t=0:11)
-        return: (batch, seq_len-1, code_size)  -> predicted next sequence (t=1:12)
-        """
-        x = self.input_fc(x)             # (B, L-1, d_model)
-        x = self.pos_encoder(x)          # 위치 정보 추가
-        x = self.encoder(x)              # Transformer 인코딩
-        out = self.output_fc(x)          # (B, L-1, code_size)
-        return out
