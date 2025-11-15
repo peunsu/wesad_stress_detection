@@ -1,0 +1,15 @@
+{
+    "exp_name": "ma-vae",
+    "load_dir": "default",
+    "window_size": 576,
+    "window_shift": 1,
+    "features": 67,
+    "hidden_dim": 512,
+    "hidden_dim_lstm": 64,
+    "latent_dim": 6,
+    "batch_size": 512,
+    "epochs": 100,
+    "patience": 10,
+    "seed": 42,
+    "TRAIN_VAE": 1
+}

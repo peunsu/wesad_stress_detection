@@ -85,6 +85,10 @@ class VAEEncoder(nn.Module):
             raise ValueError(f"Unsupported window length: {self.l_win}")
 
         self.enc_fc = nn.Linear(self.num_hidden_units, self.code_size * 4)
+        
+        self.attn = nn.MultiheadAttention(embed_dim=self.code_size * 4, num_heads=4,
+                                          batch_first=True)
+        
         self.enc_fc_mean = nn.Linear(self.code_size * 4, self.code_size) # mean vector
         self.enc_fc_std = nn.Linear(self.code_size * 4, self.code_size) # std vector
     
@@ -104,6 +108,8 @@ class VAEEncoder(nn.Module):
 
         x = torch.flatten(x, start_dim=2) # (B, l_seq, num_hidden_units)
         x = F.leaky_relu(self.enc_fc(x), negative_slope=0.2)
+        
+        x = self.attn(x, x, x)[0]  # (B, l_seq, code_size * 4)
 
         mean = self.enc_fc_mean(x) # (B, l_seq, code_size)
         std = F.relu(self.enc_fc_std(x)) + 1e-2 # (B, l_seq, code_size)
