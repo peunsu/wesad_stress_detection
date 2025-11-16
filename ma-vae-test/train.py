@@ -117,11 +117,11 @@ def main():
     )
 
     annealing = KLAnnealingHelper(
-        annealing_epochs=25,
+        annealing_epochs=10,
         type="cyclical",
-        grace_period=25,
-        start=1e-4,
-        end=1e-1,
+        grace_period=10,
+        start=1e-8,
+        end=1e-2,
         lower_initial_betas=False,
     )
     
