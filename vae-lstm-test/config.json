@@ -1,16 +1,16 @@
 {
-    "exp_name": "WESAD",
-    "l_seq": 12,
-    "l_win": 48,
-    "n_channel": 67,
-    "TRAIN_VAE": 1,
-    "batch_size": 2048,
+    "exp_name": "ma-vae",
     "load_dir": "default",
-    "num_epochs": 100,
+    "window_size": 576,
+    "small_window_size": 48,
+    "window_shift": 1,
+    "features": 67,
+    "hidden_dim": 512,
+    "hidden_dim_lstm": 64,
+    "latent_dim": 64,
+    "batch_size": 512,
+    "epochs": 100,
     "patience": 10,
-    "vae_beta": 0.0001,
-    "learning_rate": 0.0004,
-    "code_size": 6,
-    "num_hidden_units": 512,
-    "num_hidden_units_lstm": 64
+    "seed": 42,
+    "TRAIN_VAE": 1
 }

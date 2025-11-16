@@ -1,36 +1,29 @@
-import numpy as np
 import pandas as pd
 import torch
 from pathlib import Path
 from torch.utils.data import DataLoader, Dataset, random_split
 
-class VAELSTMDataset(Dataset):
-    def __init__(self, data, l_win, l_seq):
+class VAEDataset(Dataset):
+    def __init__(self, data, window_size, window_shift):
         self.data = data
-        self.l_win = l_win
-        self.l_seq = l_seq
+        self.window_size = window_size
+        self.window_shift = window_shift
         
         self.indices = []
         for sid, subject_data in self.data.items():
             n_sample = len(subject_data)
-            for k in range(l_win):
-                n_not_overlap_wins = (n_sample - k) // l_win
-                n_lstm = n_not_overlap_wins - l_seq + 1
-                for i in range(n_lstm):
-                    self.indices.append((sid, i, k))
+            n_vae = int((n_sample - self.window_size) / self.window_shift + 1)
+            for i in range(n_vae):
+                self.indices.append((sid, i))
     
     def __len__(self):
         return len(self.indices)
     
     def __getitem__(self, idx):
-        sid, i, k = self.indices[idx]
-        sample = np.zeros((self.l_seq, self.l_win, self.data[sid].shape[1]), dtype=np.float32)
-        for j in range(self.l_seq):
-            start = k + self.l_win * (j + i)
-            end = start + self.l_win
-            sample[j] = self.data[sid][start:end]
+        sid, i = self.indices[idx]
+        sample = self.data[sid][i*self.window_shift:i*self.window_shift+self.window_size]
         return torch.from_numpy(sample).float()
-    
+
 class DataGenerator:
     def __init__(self, config):
         self.config = config
@@ -75,12 +68,12 @@ class DataGenerator:
         }
     
     def create_datasets(self):
-        dataset = VAELSTMDataset(self.data['train'], self.config['l_win'], self.config['l_seq'])
+        dataset = VAEDataset(self.data['train'], self.config['window_size'], self.config['window_shift'])
         n_total = len(dataset)
         n_val = int(n_total * 0.1)
         n_train = n_total - n_val
         self.train_set, self.val_set = random_split(dataset, [n_train, n_val])
-        self.test_set = VAELSTMDataset(self.data['test'], self.config['l_win'], self.config['l_seq'])
+        self.test_set = VAEDataset(self.data['test'], self.config['window_size'], self.config['window_shift'])
     
     def get_dataloaders(self, test=False):
         train_loader = DataLoader(self.train_set, batch_size=self.config['batch_size'], shuffle=True)

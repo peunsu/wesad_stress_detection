@@ -57,14 +57,18 @@ class LocalModule(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.seq_len = config['window_size']
+        self.small_seq_len = config['small_window_size']
         self.features = config['features']
         self.hidden_dim = config['hidden_dim']
         self.latent_dim = config['latent_dim']
         
-        self.enc_conv1 = nn.Conv2d(self.features, self.hidden_dim // 16, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)) # (Batch, hidden_dim // 16, Seq_len / 2, Num_windows)
-        self.enc_conv2 = nn.Conv2d(self.hidden_dim // 16, self.hidden_dim // 8, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)) # (Batch, hidden_dim // 8, Seq_len / 4, Num_windows)
-        self.enc_conv3 = nn.Conv2d(self.hidden_dim // 8, self.hidden_dim // 4, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)) # (Batch, hidden_dim // 4, Seq_len / 8, Num_windows)
-        self.enc_conv4 = nn.Conv2d(self.hidden_dim // 4, self.hidden_dim, kernel_size=(6, 1), stride=(1, 1), padding=0) # (Batch, hidden_dim, Seq_len / 48, Num_windows)
+        if self.small_seq_len == 48:
+            self.enc_conv1 = nn.Conv2d(self.features, self.hidden_dim // 16, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)) # (Batch, hidden_dim // 16, Seq_len / 2, Num_windows)
+            self.enc_conv2 = nn.Conv2d(self.hidden_dim // 16, self.hidden_dim // 8, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)) # (Batch, hidden_dim // 8, Seq_len / 4, Num_windows)
+            self.enc_conv3 = nn.Conv2d(self.hidden_dim // 8, self.hidden_dim // 4, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)) # (Batch, hidden_dim // 4, Seq_len / 8, Num_windows)
+            self.enc_conv4 = nn.Conv2d(self.hidden_dim // 4, self.hidden_dim, kernel_size=(6, 1), stride=(1, 1), padding=0) # (Batch, hidden_dim, Seq_len / 48, Num_windows)
+        else:
+            raise ValueError("Unsupported small_seq_len value")
         
         self.enc_fc = nn.Linear(self.hidden_dim, self.latent_dim * 4)
         
@@ -87,36 +91,50 @@ class GlobalModule(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.seq_len = config['window_size']
+        self.small_seq_len = config['small_window_size']
         self.features = config['features']
         self.hidden_dim = config['hidden_dim']
         self.latent_dim = config['latent_dim']
         
-        self.enc_conv1 = nn.Conv1d(self.features, self.hidden_dim // 16, kernel_size=3, stride=3, padding=1) # (Batch, hidden_dim // 16, Seq_len / 3)
-        self.pool1 = nn.MaxPool1d(kernel_size=2, stride=2)  # (Batch, hidden_dim // 16, Seq_len / 6)
-        self.enc_conv2 = nn.Conv1d(self.hidden_dim // 16, self.hidden_dim // 8, kernel_size=5, stride=3, padding=2) # (Batch, hidden_dim // 8, Seq_len / 18)
-        self.pool2 = nn.MaxPool1d(kernel_size=2, stride=2)  # (Batch, hidden_dim // 8, Seq_len / 36)
-        self.enc_conv3 = nn.Conv1d(self.hidden_dim // 8, self.hidden_dim // 4, kernel_size=7, stride=2, padding=3) # (Batch, hidden_dim // 4, Seq_len / 72)
-        self.pool3 = nn.MaxPool1d(kernel_size=2, stride=2)  # (Batch, hidden_dim // 4, Seq_len / 144)
-        self.enc_conv4 = nn.Conv1d(self.hidden_dim // 4, self.hidden_dim, kernel_size=5, stride=2, padding=2) # (Batch, hidden_dim, Seq_len / 288)
-        self.pool4 = nn.MaxPool1d(kernel_size=2, stride=2)  # (Batch, hidden_dim // 4, Seq_len / 576)
+        self.bilstm1 = nn.LSTM(self.features, self.hidden_dim // 4, batch_first=True, bidirectional=True)
+        self.bilstm2 = nn.LSTM(self.hidden_dim // 2, self.hidden_dim // 8, batch_first=True, bidirectional=True)
+        self.enc_conv = nn.Conv1d(self.seq_len, self.seq_len // self.small_seq_len, kernel_size=1)
         
-        self.enc_fc = nn.Linear(self.hidden_dim, self.latent_dim * 4)
+        # if self.seq_len == 576:
+        #     self.enc_conv1 = nn.Conv1d(self.features, self.hidden_dim // 16, kernel_size=7, stride=3, padding=3) # (Batch, hidden_dim // 16, Seq_len / 3)
+        #     self.pool1 = nn.MaxPool1d(kernel_size=2, stride=2)  # (Batch, hidden_dim // 16, Seq_len / 6)
+        #     self.enc_conv2 = nn.Conv1d(self.hidden_dim // 16, self.hidden_dim // 8, kernel_size=5, stride=3, padding=2) # (Batch, hidden_dim // 8, Seq_len / 18)
+        #     self.pool2 = nn.MaxPool1d(kernel_size=2, stride=2)  # (Batch, hidden_dim // 8, Seq_len / 36)
+        #     self.enc_conv3 = nn.Conv1d(self.hidden_dim // 8, self.hidden_dim // 4, kernel_size=3, stride=2, padding=1) # (Batch, hidden_dim // 4, Seq_len / 72)
+        #     self.pool3 = nn.MaxPool1d(kernel_size=2, stride=2)  # (Batch, hidden_dim // 4, Seq_len / 144)
+        #     self.enc_conv4 = nn.Conv1d(self.hidden_dim // 4, self.hidden_dim, kernel_size=5, stride=2, padding=2) # (Batch, hidden_dim, Seq_len / 288)
+        #     self.pool4 = nn.MaxPool1d(kernel_size=2, stride=2)  # (Batch, hidden_dim // 4, Seq_len / 576)
+        # else:
+        #     raise ValueError("Unsupported seq_len value")
+        
+        self.enc_fc = nn.Linear(self.hidden_dim // 4, self.latent_dim * 4)
 
     def forward(self, x):
-        x = x.permute(0, 2, 1)  # (Batch, Features, Seq_len) for Conv1d
+        x, _ = self.bilstm1(x)  # (Batch, Seq_len, hidden_dim)
+        x, _ = self.bilstm2(x)  # (Batch, Seq_len, hidden_dim // 2)
         
-        x = F.leaky_relu(self.enc_conv1(x), negative_slope=0.2) # (Batch, hidden_dim // 16, 192)
-        x = self.pool1(x)  # (Batch, hidden_dim // 16, 96)
-        x = F.leaky_relu(self.enc_conv2(x), negative_slope=0.2) # (Batch, hidden_dim // 8, 32)
-        x = self.pool2(x)  # (Batch, hidden_dim // 8, 16)
-        x = F.leaky_relu(self.enc_conv3(x), negative_slope=0.2) # (Batch, hidden_dim // 4, 8)
-        x = self.pool3(x)  # (Batch, hidden_dim // 4, 4)
-        x = F.leaky_relu(self.enc_conv4(x), negative_slope=0.2) # (Batch, hidden_dim, 2)
-        x = self.pool4(x)  # (Batch, hidden_dim, 1)
+        x = F.leaky_relu(self.enc_conv(x), negative_slope=0.2)  # (Batch, Num_windows, hidden_dim // 2)
+        x = F.leaky_relu(self.enc_fc(x), negative_slope=0.2)  # (Batch, Num_windows, Latent_dim * 4)
         
-        x = x.permute(0, 2, 1)  # (Batch, 1, hidden_dim)
+        # x = x.permute(0, 2, 1)  # (Batch, Features, Seq_len) for Conv1d
         
-        x = F.leaky_relu(self.enc_fc(x), negative_slope=0.2)  # (Batch, 1, Latent_dim * 4)
+        # x = F.leaky_relu(self.enc_conv1(x), negative_slope=0.2) # (Batch, hidden_dim // 16, 192)
+        # x = self.pool1(x)  # (Batch, hidden_dim // 16, 96)
+        # x = F.leaky_relu(self.enc_conv2(x), negative_slope=0.2) # (Batch, hidden_dim // 8, 32)
+        # x = self.pool2(x)  # (Batch, hidden_dim // 8, 16)
+        # x = F.leaky_relu(self.enc_conv3(x), negative_slope=0.2) # (Batch, hidden_dim // 4, 8)
+        # x = self.pool3(x)  # (Batch, hidden_dim // 4, 4)
+        # x = F.leaky_relu(self.enc_conv4(x), negative_slope=0.2) # (Batch, hidden_dim, 2)
+        # x = self.pool4(x)  # (Batch, hidden_dim, 1)
+        
+        # x = x.permute(0, 2, 1)  # (Batch, 1, hidden_dim)
+        
+        # x = F.leaky_relu(self.enc_fc(x), negative_slope=0.2)  # (Batch, 1, Latent_dim * 4)
 
         return x
 
@@ -127,7 +145,7 @@ class MA(nn.Module):
         
         self.ma_attn = nn.MultiheadAttention(
             embed_dim=self.latent_dim * 4,
-            num_heads=8,
+            num_heads=self.latent_dim,
             batch_first=True
         )
         self.ma_layernorm = nn.LayerNorm(self.latent_dim * 4)
@@ -145,24 +163,23 @@ class VAE_Encoder(nn.Module):
         self.global_module = GlobalModule(config)
         self.ma = MA(config)
         
+        self.small_seq_len = config['small_window_size']
         self.latent_dim = config['latent_dim']
-        
-        self.fc = nn.Linear(self.latent_dim * 8, self.latent_dim * 4)
         
         self.fc_mean = nn.Linear(self.latent_dim * 4, self.latent_dim)
         self.fc_log_var = nn.Linear(self.latent_dim * 4, self.latent_dim)
     
-    def cut_window(self, x, length=48):
+    def cut_window(self, x):
         windows = []
-        for start in range(0, x.size(1), length):
-            end = start + length
+        for start in range(0, x.size(1), self.small_seq_len):
+            end = start + self.small_seq_len
             if end <= x.size(1):
                 windows.append(x[:, start:end, :])
-        windows = torch.stack(windows, dim=1)  # (Batch, Num_windows, Length, Features)
+        windows = torch.stack(windows, dim=1)  # (Batch, Num_windows, small_window_size, Features)
         return windows
 
     def forward(self, x):
-        x_wins = self.cut_window(x, length=48)  # (Batch, Num_windows, 48, Features)
+        x_wins = self.cut_window(x)  # (Batch, Num_windows, small_window_size, Features)
         
         local_z = self.local_module(x_wins)  # (Batch, Num_windows, Latent_dim * 4)
         global_z = self.global_module(x)  # (Batch, 1, Latent_dim * 4)
@@ -183,17 +200,21 @@ class VAE_Decoder(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.seq_len = config['window_size']
+        self.small_seq_len = config['small_window_size']
         self.features = config['features']
         self.hidden_dim = config['hidden_dim']
         self.latent_dim = config['latent_dim']
         
         self.dec_fc = nn.Linear(self.latent_dim, self.hidden_dim) # (Batch, Num_windows, hidden_dim)
         
-        self.dec_conv1 = nn.Conv2d(self.hidden_dim, 256 * 3, kernel_size=(1, 1), padding=(0, 0)) # (Batch, 256 * 3, 1, Num_windows)
-        self.dec_conv2 = nn.Conv2d(256, 256, kernel_size=(3, 1), padding=(1, 0)) # (Batch, 256, 3, Num_windows)
-        self.dec_conv3 = nn.Conv2d(128, 128, kernel_size=(3, 1), padding=(1, 0)) # (Batch, 128, 6, Num_windows)
-        self.dec_conv4 = nn.Conv2d(32, 32, kernel_size=(3, 1), padding=(1, 0)) # (Batch, 32, 24, Num_windows)
-        self.dec_out = nn.Conv2d(16, self.features, kernel_size=(5, 1), padding=(2, 0)) # (Batch, Features, 48, Num_windows)
+        if self.seq_len == 576 and self.small_seq_len == 48:
+            self.dec_conv1 = nn.Conv2d(self.hidden_dim, 256 * 3, kernel_size=(1, 1), padding=(0, 0)) # (Batch, 256 * 3, 1, Num_windows)
+            self.dec_conv2 = nn.Conv2d(256, 256, kernel_size=(3, 1), padding=(1, 0)) # (Batch, 256, 3, Num_windows)
+            self.dec_conv3 = nn.Conv2d(128, 128, kernel_size=(3, 1), padding=(1, 0)) # (Batch, 128, 6, Num_windows)
+            self.dec_conv4 = nn.Conv2d(32, 32, kernel_size=(3, 1), padding=(1, 0)) # (Batch, 32, 24, Num_windows)
+            self.dec_out = nn.Conv2d(16, self.features, kernel_size=(5, 1), padding=(2, 0)) # (Batch, Features, 48, Num_windows)
+        else:
+            raise ValueError("Unsupported seq_len or small_seq_len value")
         
     def forward(self, z):
         num_windows = z.size(1)
@@ -201,25 +222,28 @@ class VAE_Decoder(nn.Module):
         x = x.permute(0, 2, 1) # (B, hidden_dim, Num_windows)
         x = x.view(-1, self.hidden_dim, 1, num_windows)  # (B, hidden_dim, 1, Num_windows)
         
-        x = F.leaky_relu(self.dec_conv1(x), negative_slope=0.2)
-        b = x.size(0)
-        x = x.view(b, 256, 3, num_windows)
-        
-        x = F.leaky_relu(self.dec_conv2(x), negative_slope=0.2)
-        x = depth_to_space_2d(x, 2)
-        x = x.view(b, 128, 6, num_windows)
-        
-        x = F.leaky_relu(self.dec_conv3(x), negative_slope=0.2)
-        x = depth_to_space_2d(x, 2)
-        x = x.view(b, 32, 24, num_windows)
-        
-        x = F.leaky_relu(self.dec_conv4(x), negative_slope=0.2)
-        x = depth_to_space_2d(x, 2)
-        x = x.view(b, 16, -1, num_windows)
+        if self.seq_len == 576 and self.small_seq_len == 48:            
+            x = F.leaky_relu(self.dec_conv1(x), negative_slope=0.2)
+            b = x.size(0)
+            x = x.view(b, 256, 3, num_windows)
+            
+            x = F.leaky_relu(self.dec_conv2(x), negative_slope=0.2)
+            x = depth_to_space_2d(x, 2)
+            x = x.view(b, 128, 6, num_windows)
+            
+            x = F.leaky_relu(self.dec_conv3(x), negative_slope=0.2)
+            x = depth_to_space_2d(x, 2)
+            x = x.view(b, 32, 24, num_windows)
+            
+            x = F.leaky_relu(self.dec_conv4(x), negative_slope=0.2)
+            x = depth_to_space_2d(x, 2)
+            x = x.view(b, 16, -1, num_windows)
 
-        x = self.dec_out(x)
+            x = self.dec_out(x)
+        else:
+            raise ValueError("Unsupported seq_len or small_seq_len value")
+        
         x = x.permute(0, 3, 2, 1)  # (Batch, Num_windows, seq_len, Features)
-
         return x
 
 class LSTMModel(nn.Module):
@@ -240,15 +264,58 @@ class LSTMModel(nn.Module):
         x, _ = self.lstm3(x)
         return x
 
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model: int, max_len: int = 5000):
+        super(PositionalEncoding, self).__init__()
+        
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-torch.log(torch.tensor(10000.0)) / d_model))
+        
+        pe = torch.zeros(1, max_len, d_model)
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
+        
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x + self.pe[:, :x.size(1), :]
+
+class TransformerPredictor(nn.Module):
+    def __init__(self, config):
+        super(TransformerPredictor, self).__init__()
+        self.config = config
+        self.latent_dim = config['latent_dim']
+        
+        self.pos_encoder = PositionalEncoding(self.latent_dim)
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=self.latent_dim, 
+            nhead=self.latent_dim // 4, 
+            dim_feedforward=self.latent_dim * 4,
+            batch_first=True
+        )
+        
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layer,
+            num_layers=3
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.pos_encoder(x)
+        output = self.transformer_encoder(x)
+        
+        return output
+
 class MA_VAE(nn.Module):
     def __init__(self, config, beta=1e-8):
         super().__init__()
         self.encoder = VAE_Encoder(config)
         self.decoder = VAE_Decoder(config)
-        self.lstm = LSTMModel(config)
+        #self.lstm = LSTMModel(config)
+        self.transformer = TransformerPredictor(config)
         
         self.config = config
-        self.beta = beta 
+        self.beta = beta
         
     def loss_fn(self, X, Xhat, z_mean, z_log_var):
         recon_loss = torch.mean(
@@ -268,7 +335,7 @@ class MA_VAE(nn.Module):
 
         # X shape: (Batch, Seq_len, Features)
         z_mean, z_log_var, z = self.encoder(X)
-        z_pred = self.lstm(z[:, :-1, :])  # Predict next latent vector
+        z_pred = self.transformer(z[:, :-1, :])  # Predict next latent vector
         Xhat = self.decoder(z_pred)
         
         X = X.view(Xhat.size(0), -1, Xhat.size(2), Xhat.size(3))
@@ -287,7 +354,7 @@ class MA_VAE(nn.Module):
         
         with torch.no_grad():
             z_mean, z_log_var, z = self.encoder(X)
-            z_pred = self.lstm(z[:, :-1, :])  # Predict next latent vector
+            z_pred = self.transformer(z[:, :-1, :])  # Predict next latent vector
             Xhat = self.decoder(z_pred)
             
             X = X.view(Xhat.size(0), -1, Xhat.size(2), Xhat.size(3))
@@ -300,7 +367,7 @@ class MA_VAE(nn.Module):
 
     def forward(self, X):
         z_mean, z_log_var, z = self.encoder(X)
-        z_pred = self.lstm(z[:, :-1, :])  # Predict next latent vector
+        z_pred = self.transformer(z[:, :-1, :])  # Predict next latent vector
         Xhat = self.decoder(z_pred)
         
         return Xhat, z_mean, z_log_var, z

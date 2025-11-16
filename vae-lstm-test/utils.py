@@ -1,10 +1,7 @@
-""" util function.py """
-
 import json
 import argparse
 from pathlib import Path
 from datetime import datetime
-
 
 def get_config_from_json(json_file):
     """
@@ -16,7 +13,6 @@ def get_config_from_json(json_file):
     with open(json_file, 'r', encoding='utf-8') as f:
         config_dict = json.load(f)
     return config_dict
-
 
 def save_config(config):
     dateTimeObj = datetime.now()
@@ -35,7 +31,7 @@ def process_config(json_file):
     else:
         save_dir = Path(config['load_dir'])
     # specify the saving folder name for this experiment
-    save_name = f'{config["exp_name"]}-{config["l_win"]}-{config["l_seq"]}-{config["code_size"]}'
+    save_name = f'{config["exp_name"]}-{config["window_size"]}-{config["window_shift"]}-{config["latent_dim"]}'
     config['summary_dir'] = str(save_dir / save_name / "summary/")
     config['result_dir'] = str(save_dir / save_name / "result/")
     config['checkpoint_dir'] = str(save_dir / save_name / "checkpoint/")
@@ -55,7 +51,6 @@ def create_dirs(dirs):
     except Exception as err:
         print("Creating directories error: {0}".format(err))
         exit(-1)
-
 
 def get_args():
     argparser = argparse.ArgumentParser(description=__doc__)
