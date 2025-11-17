@@ -62,7 +62,26 @@ class LocalModule(nn.Module):
         self.hidden_dim = config['hidden_dim']
         self.latent_dim = config['latent_dim']
         
-        if self.small_seq_len == 48:
+        if self.small_seq_len == 24:
+            self._encoder_symmetric_pad = True
+            self.enc_conv1 = nn.Sequential(
+                nn.Conv2d(self.features, self.hidden_dim // 8, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)), # (Batch, hidden_dim // 8, Seq_len / 2, Num_windows)
+                nn.LeakyReLU(negative_slope=0.2)
+            )
+            self.enc_conv2 = nn.Sequential(
+                nn.Conv2d(self.hidden_dim // 8, self.hidden_dim // 4, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)), # (Batch, hidden_dim // 4, Seq_len / 4, Num_windows)
+                nn.LeakyReLU(negative_slope=0.2)
+            )
+            self.enc_conv3 = nn.Sequential(
+                nn.Conv2d(self.hidden_dim // 4, self.hidden_dim // 2, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)), # (Batch, hidden_dim // 2, Seq_len / 8, Num_windows)
+                nn.LeakyReLU(negative_slope=0.2)
+            )
+            self.enc_conv4 = nn.Sequential(
+                nn.Conv2d(self.hidden_dim // 2, self.hidden_dim, kernel_size=(4, 1), stride=(1, 1), padding=0), # (Batch, hidden_dim, Seq_len / 24, Num_windows)
+                nn.LeakyReLU(negative_slope=0.2)
+            )
+        elif self.small_seq_len == 48:
+            self._encoder_symmetric_pad = False
             self.enc_conv1 = nn.Sequential(
                 nn.Conv2d(self.features, self.hidden_dim // 8, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)), # (Batch, hidden_dim // 8, Seq_len / 2, Num_windows)
                 nn.LeakyReLU(negative_slope=0.2),
@@ -90,6 +109,9 @@ class LocalModule(nn.Module):
     def forward(self, x):
         x = x.permute(0, 3, 2, 1)  # (Batch, features, Seq_len, Num_windows)
         
+        if getattr(self, '_encoder_symmetric_pad', False):
+            x = F.pad(x, (0, 0, 4, 4), mode='reflect')
+        
         x = self.enc_conv1(x) # (Batch, hidden_dim // 8, 24, Num_windows)
         x = self.enc_conv2(x) # (Batch, hidden_dim // 4, 12, Num_windows)
         x = self.enc_conv3(x) # (Batch, hidden_dim // 2, 6, Num_windows)
@@ -114,7 +136,8 @@ class GlobalModule(nn.Module):
         # self.bilstm1 = nn.LSTM(self.features, self.hidden_dim // 4, batch_first=True, bidirectional=True)
         # self.bilstm2 = nn.LSTM(self.hidden_dim // 2, self.hidden_dim // 8, batch_first=True, bidirectional=True)
         
-        if self.seq_len == 576:
+        
+        if self.seq_len == 144:
             self.enc_conv1 = nn.Sequential(
                 nn.Conv1d(self.features, self.hidden_dim // 8, kernel_size=7, stride=3, padding=3), # (Batch, hidden_dim // 8, Seq_len / 3)
                 nn.LeakyReLU(negative_slope=0.2),
@@ -134,7 +157,30 @@ class GlobalModule(nn.Module):
                 #nn.BatchNorm1d(self.hidden_dim // 2)
             )
             self.enc_conv4 = nn.Sequential(
-                nn.Conv1d(self.hidden_dim // 2, self.hidden_dim, kernel_size=5, stride=2, padding=2), # (Batch, hidden_dim, Seq_len / 288)
+                nn.Conv1d(self.hidden_dim // 2, self.hidden_dim, kernel_size=1), # (Batch, hidden_dim, Seq_len / 144)
+                nn.LeakyReLU(negative_slope=0.2)
+            )
+        elif self.seq_len == 576:
+            self.enc_conv1 = nn.Sequential(
+                nn.Conv1d(self.features, self.hidden_dim // 8, kernel_size=7, stride=3, padding=3), # (Batch, hidden_dim // 8, Seq_len / 3)
+                nn.LeakyReLU(negative_slope=0.2),
+                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 8, Seq_len / 6)
+                #nn.BatchNorm1d(self.hidden_dim // 8)
+            )
+            self.enc_conv2 = nn.Sequential(
+                nn.Conv1d(self.hidden_dim // 8, self.hidden_dim // 4, kernel_size=5, stride=3, padding=2), # (Batch, hidden_dim // 4, Seq_len / 18)
+                nn.LeakyReLU(negative_slope=0.2),
+                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 4, Seq_len / 36)
+                #nn.BatchNorm1d(self.hidden_dim // 4)
+            )
+            self.enc_conv3 = nn.Sequential(
+                nn.Conv1d(self.hidden_dim // 4, self.hidden_dim // 2, kernel_size=3, stride=2, padding=1), # (Batch, hidden_dim // 2, Seq_len / 72)
+                nn.LeakyReLU(negative_slope=0.2),
+                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 2, Seq_len / 144)
+                #nn.BatchNorm1d(self.hidden_dim // 2)
+            )
+            self.enc_conv4 = nn.Sequential(
+                nn.Conv1d(self.hidden_dim // 2, self.hidden_dim, kernel_size=3, stride=2, padding=2), # (Batch, hidden_dim, Seq_len / 288)
                 nn.LeakyReLU(negative_slope=0.2),
                 nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim, Seq_len / 576)
                 #nn.BatchNorm1d(self.hidden_dim)
@@ -242,7 +288,25 @@ class VAE_Decoder(nn.Module):
         
         self.dec_fc = nn.Linear(self.latent_dim, self.hidden_dim) # (Batch, Num_windows, hidden_dim)
         
-        if self.seq_len == 576 and self.small_seq_len == 48:
+        if self.seq_len == 144 and self.small_seq_len == 24:
+            self.dec_conv1 = nn.Sequential(
+                nn.Conv2d(self.hidden_dim, 128 * 3, kernel_size=(1, 1), padding=(0, 0)),  # (Batch, hidden_dim, 1, Num_windows)
+                nn.LeakyReLU(negative_slope=0.2)
+            )
+            self.dec_conv2 = nn.Sequential(
+                nn.Conv2d(128, 128, kernel_size=(3, 1), padding=(1, 0)), # (Batch, hidden_dim // 4, 3, Num_windows)
+                nn.LeakyReLU(negative_slope=0.2),
+            )
+            self.dec_conv3 = nn.Sequential(
+                nn.Conv2d(64, 64, kernel_size=(3, 1), padding=(1, 0)), # (Batch, hidden_dim // 8, 6, Num_windows)
+                nn.LeakyReLU(negative_slope=0.2),
+            )
+            self.dec_conv4 = nn.Sequential(
+                nn.Conv2d(32, 32, kernel_size=(3, 1), padding=(1, 0)), # (Batch, hidden_dim // 16, 12, Num_windows)
+                nn.LeakyReLU(negative_slope=0.2),
+            )
+            self.dec_out = nn.Conv2d(16, self.features, kernel_size=(5, 1), padding=(2, 0)) # (Batch, Features, 24, Num_windows)
+        elif self.seq_len == 576 and self.small_seq_len == 48:
             self.dec_conv1 = nn.Sequential(
                 nn.Conv2d(self.hidden_dim, 256 * 3, kernel_size=(1, 1), padding=(0, 0)),  # (Batch, 256 * 3, 1, Num_windows)
                 nn.LeakyReLU(negative_slope=0.2)
@@ -250,26 +314,14 @@ class VAE_Decoder(nn.Module):
             self.dec_conv2 = nn.Sequential(
                 nn.Conv2d(256, 256, kernel_size=(3, 1), padding=(1, 0)),  # (Batch, 256, 3, Num_windows)
                 nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv2d(256, 256, kernel_size=(3, 1), padding=(1, 0)),  # (Batch, 256, 3, Num_windows)
-                # nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv2d(256, 256, kernel_size=(3, 1), padding=(1, 0)),  # (Batch, 256, 3, Num_windows)
-                # nn.LeakyReLU(negative_slope=0.2)
             )
             self.dec_conv3 = nn.Sequential(
                 nn.Conv2d(128, 128, kernel_size=(3, 1), padding=(1, 0)),  # (Batch, 128, 6, Num_windows)
                 nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv2d(128, 128, kernel_size=(3, 1), padding=(1, 0)),  # (Batch, 128, 6, Num_windows)
-                # nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv2d(128, 128, kernel_size=(3, 1), padding=(1, 0)),  # (Batch, 128, 6, Num_windows)
-                # nn.LeakyReLU(negative_slope=0.2)
             )
             self.dec_conv4 = nn.Sequential(
                 nn.Conv2d(32, 32, kernel_size=(3, 1), padding=(1, 0)),  # (Batch, 32, 24, Num_windows)
                 nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv2d(32, 32, kernel_size=(3, 1), padding=(1, 0)),  # (Batch, 32, 24, Num_windows)
-                # nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv2d(32, 32, kernel_size=(3, 1), padding=(1, 0)),  # (Batch, 32, 24, Num_windows)
-                # nn.LeakyReLU(negative_slope=0.2)
             )         
             self.dec_out = nn.Conv2d(16, self.features, kernel_size=(5, 1), padding=(2, 0)) # (Batch, Features, 48, Num_windows)
         else:
@@ -281,7 +333,25 @@ class VAE_Decoder(nn.Module):
         x = x.permute(0, 2, 1) # (B, hidden_dim, Num_windows)
         x = x.view(-1, self.hidden_dim, 1, num_windows)  # (B, hidden_dim, 1, Num_windows)
         
-        if self.seq_len == 576 and self.small_seq_len == 48:            
+        if self.seq_len == 144 and self.small_seq_len == 24:
+            x = self.dec_conv1(x)
+            b = x.size(0)
+            x = x.view(b, 128, 3, num_windows)
+
+            x = self.dec_conv2(x)
+            x = depth_to_space_2d(x, 2)
+            x = x.view(b, 64, 6, num_windows)
+
+            x = self.dec_conv3(x)
+            x = depth_to_space_2d(x, 2)
+            x = x.view(b, 32, 12, num_windows)
+            
+            x = self.dec_conv4(x)
+            x = depth_to_space_2d(x, 2)
+            x = x.view(b, 16, -1, num_windows)
+            
+            x = self.dec_out(x)
+        elif self.seq_len == 576 and self.small_seq_len == 48:            
             x = self.dec_conv1(x)
             b = x.size(0)
             x = x.view(b, 256, 3, num_windows)

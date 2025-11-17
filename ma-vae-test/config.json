@@ -1,8 +1,8 @@
 {
-    "exp_name": "ma-vae-lstm-minmax",
+    "exp_name": "vae-lstm-global-ma",
     "load_dir": "default",
-    "window_size": 576,
-    "small_window_size": 48,
+    "window_size": 144,
+    "small_window_size": 24,
     "window_shift": 1,
     "features": 67,
     "hidden_dim": 512,
