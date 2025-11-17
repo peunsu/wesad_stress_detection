@@ -136,8 +136,47 @@ class GlobalModule(nn.Module):
         # self.bilstm1 = nn.LSTM(self.features, self.hidden_dim // 4, batch_first=True, bidirectional=True)
         # self.bilstm2 = nn.LSTM(self.hidden_dim // 2, self.hidden_dim // 8, batch_first=True, bidirectional=True)
         
-        
-        if self.seq_len == 144:
+        if self.seq_len == 72:
+            self.enc_conv1 = nn.Sequential(
+                nn.Conv1d(self.features, self.hidden_dim // 8, kernel_size=7, stride=3, padding=3), # (Batch, hidden_dim // 8, Seq_len / 3)
+                nn.LeakyReLU(negative_slope=0.2),
+                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 8, Seq_len / 6)
+                #nn.BatchNorm1d(self.hidden_dim // 8)
+            )
+            self.enc_conv2 = nn.Sequential(
+                nn.Conv1d(self.hidden_dim // 8, self.hidden_dim // 4, kernel_size=5, stride=3, padding=2), # (Batch, hidden_dim // 4, Seq_len / 18)
+                nn.LeakyReLU(negative_slope=0.2),
+                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 4, Seq_len / 36)
+                #nn.BatchNorm1d(self.hidden_dim // 4)
+            )
+            self.enc_conv3 = nn.Sequential(
+                nn.Conv1d(self.hidden_dim // 4, self.hidden_dim // 2, kernel_size=3, stride=1, padding=1), # (Batch, hidden_dim // 2, Seq_len / 72)
+                nn.Conv1d(self.hidden_dim // 2, self.hidden_dim, kernel_size=3, stride=1, padding=1), # (Batch, hidden_dim, Seq_len / 144)
+                nn.LeakyReLU(negative_slope=0.2),
+                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 2, Seq_len / 144)
+                #nn.BatchNorm1d(self.hidden_dim // 2)
+            )
+        elif self.seq_len == 144:
+            self.enc_conv1 = nn.Sequential(
+                nn.Conv1d(self.features, self.hidden_dim // 8, kernel_size=7, stride=3, padding=3), # (Batch, hidden_dim // 8, Seq_len / 3)
+                nn.LeakyReLU(negative_slope=0.2),
+                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 8, Seq_len / 6)
+                #nn.BatchNorm1d(self.hidden_dim // 8)
+            )
+            self.enc_conv2 = nn.Sequential(
+                nn.Conv1d(self.hidden_dim // 8, self.hidden_dim // 4, kernel_size=5, stride=3, padding=2), # (Batch, hidden_dim // 4, Seq_len / 18)
+                nn.LeakyReLU(negative_slope=0.2),
+                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 4, Seq_len / 36)
+                #nn.BatchNorm1d(self.hidden_dim // 4)
+            )
+            self.enc_conv3 = nn.Sequential(
+                nn.Conv1d(self.hidden_dim // 4, self.hidden_dim // 2, kernel_size=3, stride=2, padding=1), # (Batch, hidden_dim // 2, Seq_len / 72)
+                nn.Conv1d(self.hidden_dim // 2, self.hidden_dim, kernel_size=3, stride=1, padding=1), # (Batch, hidden_dim, Seq_len / 144)
+                nn.LeakyReLU(negative_slope=0.2),
+                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 2, Seq_len / 144)
+                #nn.BatchNorm1d(self.hidden_dim // 2)
+            )
+        elif self.seq_len == 288:
             self.enc_conv1 = nn.Sequential(
                 nn.Conv1d(self.features, self.hidden_dim // 8, kernel_size=7, stride=3, padding=3), # (Batch, hidden_dim // 8, Seq_len / 3)
                 nn.LeakyReLU(negative_slope=0.2),
@@ -157,8 +196,10 @@ class GlobalModule(nn.Module):
                 #nn.BatchNorm1d(self.hidden_dim // 2)
             )
             self.enc_conv4 = nn.Sequential(
-                nn.Conv1d(self.hidden_dim // 2, self.hidden_dim, kernel_size=1), # (Batch, hidden_dim, Seq_len / 144)
-                nn.LeakyReLU(negative_slope=0.2)
+                nn.Conv1d(self.hidden_dim // 2, self.hidden_dim, kernel_size=3, stride=1, padding=1), # (Batch, hidden_dim, Seq_len / 144)
+                nn.LeakyReLU(negative_slope=0.2),
+                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim, Seq_len / 288)
+                #nn.BatchNorm1d(self.hidden_dim)
             )
         elif self.seq_len == 576:
             self.enc_conv1 = nn.Sequential(
@@ -180,7 +221,7 @@ class GlobalModule(nn.Module):
                 #nn.BatchNorm1d(self.hidden_dim // 2)
             )
             self.enc_conv4 = nn.Sequential(
-                nn.Conv1d(self.hidden_dim // 2, self.hidden_dim, kernel_size=3, stride=2, padding=2), # (Batch, hidden_dim, Seq_len / 288)
+                nn.Conv1d(self.hidden_dim // 2, self.hidden_dim, kernel_size=3, stride=2, padding=1), # (Batch, hidden_dim, Seq_len / 288)
                 nn.LeakyReLU(negative_slope=0.2),
                 nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim, Seq_len / 576)
                 #nn.BatchNorm1d(self.hidden_dim)
@@ -204,7 +245,8 @@ class GlobalModule(nn.Module):
         x = self.enc_conv1(x) # (Batch, hidden_dim // 8, 192)
         x = self.enc_conv2(x) # (Batch, hidden_dim // 4, 32)
         x = self.enc_conv3(x) # (Batch, hidden_dim // 2, 8)
-        x = self.enc_conv4(x) # (Batch, hidden_dim, 2)
+        if hasattr(self, 'enc_conv4'):
+            x = self.enc_conv4(x) # (Batch, hidden_dim, 2)
         
         x = x.permute(0, 2, 1)  # (Batch, 1, hidden_dim)
         
@@ -261,14 +303,15 @@ class VAE_Encoder(nn.Module):
         global_z = self.global_module(x)  # (Batch, 1, Latent_dim * 4)
         
         combined_z = self.ma(local_z, global_z)  # (Batch, Num_windows, Latent_dim * 4)
-        #combined_z = torch.cat([local_z, global_z.repeat(1, local_z.size(1), 1)], dim=-1)  # (Batch, Num_windows, Latent_dim * 8)
         
+        #combined_z = torch.cat([local_z, global_z.repeat(1, local_z.size(1), 1)], dim=-1)  # (Batch, Num_windows, Latent_dim * 8)
         #combined_z = F.leaky_relu(self.fc(combined_z), negative_slope=0.2)  # (Batch, Num_windows, Latent_dim * 4)
         
         #combined_z = local_z  # (Batch, Num_windows, Latent_dim * 4)
         
         z_mean = self.fc_mean(combined_z)  # (Batch, Num_windows, Latent_dim)
         z_log_var = F.relu(self.fc_log_var(combined_z))  # (Batch, Num_windows, Latent_dim)
+        #z_log_var = torch.clamp(F.relu(self.fc_log_var(combined_z)), min=-10, max=10)  # Use it if KL divergence does not converge
         
         # Reparameterization trick
         std = torch.exp(0.5 * z_log_var) + 1e-2  # (Batch, Num_windows, Latent_dim)
@@ -288,7 +331,7 @@ class VAE_Decoder(nn.Module):
         
         self.dec_fc = nn.Linear(self.latent_dim, self.hidden_dim) # (Batch, Num_windows, hidden_dim)
         
-        if self.seq_len == 144 and self.small_seq_len == 24:
+        if self.small_seq_len == 24:
             self.dec_conv1 = nn.Sequential(
                 nn.Conv2d(self.hidden_dim, 128 * 3, kernel_size=(1, 1), padding=(0, 0)),  # (Batch, hidden_dim, 1, Num_windows)
                 nn.LeakyReLU(negative_slope=0.2)
@@ -306,7 +349,7 @@ class VAE_Decoder(nn.Module):
                 nn.LeakyReLU(negative_slope=0.2),
             )
             self.dec_out = nn.Conv2d(16, self.features, kernel_size=(5, 1), padding=(2, 0)) # (Batch, Features, 24, Num_windows)
-        elif self.seq_len == 576 and self.small_seq_len == 48:
+        elif self.small_seq_len == 48:
             self.dec_conv1 = nn.Sequential(
                 nn.Conv2d(self.hidden_dim, 256 * 3, kernel_size=(1, 1), padding=(0, 0)),  # (Batch, 256 * 3, 1, Num_windows)
                 nn.LeakyReLU(negative_slope=0.2)
@@ -333,7 +376,7 @@ class VAE_Decoder(nn.Module):
         x = x.permute(0, 2, 1) # (B, hidden_dim, Num_windows)
         x = x.view(-1, self.hidden_dim, 1, num_windows)  # (B, hidden_dim, 1, Num_windows)
         
-        if self.seq_len == 144 and self.small_seq_len == 24:
+        if self.small_seq_len == 24:
             x = self.dec_conv1(x)
             b = x.size(0)
             x = x.view(b, 128, 3, num_windows)
@@ -351,7 +394,7 @@ class VAE_Decoder(nn.Module):
             x = x.view(b, 16, -1, num_windows)
             
             x = self.dec_out(x)
-        elif self.seq_len == 576 and self.small_seq_len == 48:            
+        elif self.small_seq_len == 48:            
             x = self.dec_conv1(x)
             b = x.size(0)
             x = x.view(b, 256, 3, num_windows)

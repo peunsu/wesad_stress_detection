@@ -1,23 +1,36 @@
-import random
-import numpy as np
 import pandas as pd
+import numpy as np
 import torch
 from pathlib import Path
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, Dataset, random_split
+
+class VAEDataset(Dataset):
+    def __init__(self, data, window_size, window_shift):
+        self.data = data
+        self.window_size = window_size
+        self.window_shift = window_shift
+        
+        self.indices = []
+        for sid, subject_data in self.data.items():
+            n_sample = len(subject_data)
+            n_vae = int((n_sample - self.window_size) / self.window_shift + 1)
+            for i in range(n_vae):
+                self.indices.append((sid, i))
+    
+    def __len__(self):
+        return len(self.indices)
+    
+    def __getitem__(self, idx):
+        sid, i = self.indices[idx]
+        sample = self.data[sid][i*self.window_shift:i*self.window_shift+self.window_size]
+        return torch.from_numpy(sample).float()
 
 class DataGenerator:
     def __init__(self, config):
         self.config = config
         self.load_dataset()
+        self.create_datasets()
         
-    def separate_train_and_val_set(self, n_win):
-        n_train = int(np.floor((n_win * 0.8)))
-        n_val = n_win - n_train
-        idx_train = random.sample(range(n_win), n_train)
-        idx_val = list(set(idx_train) ^ set(range(n_win)))
-        return idx_train, idx_val, n_train, n_val
-
-    # 데이터 셋 정규화 후, 학습에 사용할 dataset 생성
     def load_dataset(self):
         data_dir = Path('../data')
         train_df = pd.read_csv(data_dir / 'train.csv')
@@ -34,85 +47,49 @@ class DataGenerator:
         float_cols = train_df.select_dtypes(include='float').columns
 
         # 평균과 표준편차 계산
-        train_m = train_df[float_cols].mean()
-        train_std = train_df[float_cols].std()
+        # train_m = train_df[float_cols].mean()
+        # train_std = train_df[float_cols].std()
 
-        # float 컬럼만 정규화
+        # # float 컬럼만 정규화
+        # train_df_normalized = train_df.copy()
+        # train_df_normalized[float_cols] = (train_df[float_cols] - train_m) / train_std
+
+        # test_df_normalized = test_df.copy()
+        # test_df_normalized[float_cols] = (test_df[float_cols] - train_m) / train_std
+        
+        # Min-Max 정규화
+        train_min = train_df[float_cols].min()
+        train_max = train_df[float_cols].max()
         train_df_normalized = train_df.copy()
-        train_df_normalized[float_cols] = (train_df[float_cols] - train_m) / train_std
-
+        train_df_normalized[float_cols] = (train_df[float_cols] - train_min) / (train_max - train_min)
         test_df_normalized = test_df.copy()
-        test_df_normalized[float_cols] = (test_df[float_cols] - train_m) / train_std
+        test_df_normalized[float_cols] = (test_df[float_cols] - train_min) / (train_max - train_min)
         
         # subject_id별로 그룹화해서 딕셔너리 형태로 저장
-        data = {
-            'training': {
+        self.data = {
+            'train': {
                 sid: group.to_numpy()
                 for sid, group in train_df_normalized.groupby(train_subjects)
             },
             'test': {
-                sid: group.to_numpy()
-                for sid, group in test_df_normalized.groupby(test_subjects)
+                'test_sid': test_df_normalized.to_numpy() # Test set은 subject_id를 구분하지 않고 모두 합쳐서 사용
             }
         }
-
-        self._create_vae_sets(data)
     
-    def _create_vae_sets(self, data):
-        window_size = self.config['window_size']
-        window_shift = self.config['window_shift']
+    def create_datasets(self):
+        dataset = VAEDataset(self.data['train'], self.config['window_size'], self.config['window_shift'])
+        n_total = len(dataset)
+        n_val = int(n_total * 0.1)
+        n_train = n_total - n_val
+        self.train_set, self.val_set = random_split(dataset, [n_train, n_val])
+        self.test_set = VAEDataset(self.data['test'], self.config['window_size'], self.config['window_shift'])
+    
+    def get_dataloaders(self, test=False):
+        train_loader = DataLoader(self.train_set, batch_size=self.config['batch_size'], shuffle=True)
+        val_loader = DataLoader(self.val_set, batch_size=self.config['batch_size'], shuffle=False)
         
-        rolling_windows_dict = {}
-        for mode in ['training', 'test']:
-            subject_windows = []
-            
-            if mode == 'training':
-                for sid, subject_data in data[mode].items():
-                    n_sample = subject_data.shape[0]
-                    n_vae = int((n_sample - window_size) / window_shift + 1)
-                    if n_vae <= 0:
-                        continue
-                    windows = np.zeros((n_vae, window_size, subject_data.shape[1]))
-                    for window in range(n_vae):
-                        for feature in range(subject_data.shape[1]):
-                            windows[window, :, feature] = subject_data[window * window_shift:window_size + window * window_shift, feature]
-                    subject_windows.append(windows)
-            elif mode == 'test':
-                data_all = np.concatenate(list(data[mode].values()), axis=0)
-                n_sample = data_all.shape[0]
-                n_vae = int((n_sample - window_size) / window_shift + 1)
-                if n_vae <= 0:
-                    continue
-                windows = np.zeros((n_vae, window_size, data_all.shape[1]))
-                for window in range(n_vae):
-                    for feature in range(data_all.shape[1]):
-                        windows[window, :, feature] = data_all[window * window_shift:window_size + window * window_shift, feature]
-                subject_windows.append(windows)
-
-            if subject_windows:
-                rolling_windows_dict[mode] = np.concatenate(subject_windows, axis=0)
-            else:
-                rolling_windows_dict[mode] = np.zeros((1, window_size, list(data[mode].values())[0].shape[1]))
-
-        self.idx_train, self.idx_val, n_train, n_val = self.separate_train_and_val_set(rolling_windows_dict['training'].shape[0])
-
-        self.train_set_vae = {'data': rolling_windows_dict['training'][self.idx_train]}
-        self.val_set_vae = {'data': rolling_windows_dict['training'][self.idx_val]}
-        self.test_set_vae = {'data': rolling_windows_dict['test']}
-
-    def get_vae_datasets(self):
-        return self.train_set_vae['data'], self.val_set_vae['data']
-
-    def get_vae_dataloaders(self):
-        batch_size = self.config['batch_size']
+        if test:
+            test_loader = DataLoader(self.test_set, batch_size=self.config['batch_size'], shuffle=False)
+            return train_loader, val_loader, test_loader
         
-        train_data = torch.from_numpy(self.train_set_vae['data']).float()
-        val_data = torch.from_numpy(self.val_set_vae['data']).float()
-
-        train_dataset = TensorDataset(train_data)
-        val_dataset = TensorDataset(val_data)
-
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
-
         return train_loader, val_loader

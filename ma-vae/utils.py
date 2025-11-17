@@ -35,7 +35,6 @@ def process_config(json_file):
     config['summary_dir'] = str(save_dir / save_name / "summary/")
     config['result_dir'] = str(save_dir / save_name / "result/")
     config['checkpoint_dir'] = str(save_dir / save_name / "checkpoint/")
-    config['checkpoint_dir_lstm'] = str(save_dir / save_name / "checkpoint/lstm/")
 
     return config
 

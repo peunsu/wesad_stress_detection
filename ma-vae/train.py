@@ -90,7 +90,7 @@ def main():
         print("missing or invalid arguments")
         exit(0)
     
-    create_dirs([config['result_dir'], config['checkpoint_dir'], config['checkpoint_dir_lstm']])
+    create_dirs([config['result_dir'], config['checkpoint_dir']])
     save_config(config)
     
     seed = config.get('seed', 42)
@@ -103,7 +103,7 @@ def main():
     # 더미 데이터셋 및 DataLoader (LOAD_PATH 대체)
     # 원본 코드는 unbatch().batch(512)를 사용하지만, 여기서는 직접 DataLoader 사용
     data = DataGenerator(config)
-    train_loader, val_loader = data.get_vae_dataloaders()
+    train_loader, val_loader = data.get_dataloaders()
 
     # 모델 인스턴스화
     encoder = VAE_Encoder(config).to(device)
