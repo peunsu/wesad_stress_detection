@@ -11,6 +11,8 @@
     "batch_size": 512,
     "epochs": 100,
     "patience": 10,
+    "grace_period": 25,
+    "annealing_epochs": 25,
     "seed": 42,
     "TRAIN_VAE": 1
 }

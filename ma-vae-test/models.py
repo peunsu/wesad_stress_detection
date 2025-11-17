@@ -64,31 +64,19 @@ class LocalModule(nn.Module):
         
         if self.small_seq_len == 48:
             self.enc_conv1 = nn.Sequential(
-                nn.Conv2d(self.features, self.hidden_dim // 16, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)), # (Batch, hidden_dim // 16, Seq_len / 2, Num_windows)
+                nn.Conv2d(self.features, self.hidden_dim // 8, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)), # (Batch, hidden_dim // 8, Seq_len / 2, Num_windows)
                 nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv2d(self.hidden_dim // 16, self.hidden_dim // 16, kernel_size=(5, 1), stride=(1, 1), padding=(2, 0)), # (Batch, hidden_dim // 16, Seq_len / 2, Num_windows)
-                # nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv2d(self.hidden_dim // 16, self.hidden_dim // 16, kernel_size=(3, 1), stride=(1, 1), padding=(1, 0)), # (Batch, hidden_dim // 16, Seq_len / 2, Num_windows)
-                # nn.LeakyReLU(negative_slope=0.2),
             )
             self.enc_conv2 = nn.Sequential(
-                nn.Conv2d(self.hidden_dim // 16, self.hidden_dim // 8, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)), # (Batch, hidden_dim // 8, Seq_len / 4, Num_windows)
+                nn.Conv2d(self.hidden_dim // 8, self.hidden_dim // 4, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)), # (Batch, hidden_dim // 4, Seq_len / 4, Num_windows)
                 nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv2d(self.hidden_dim // 8, self.hidden_dim // 8, kernel_size=(5, 1), stride=(1, 1), padding=(2, 0)), # (Batch, hidden_dim // 8, Seq_len / 4, Num_windows)
-                # nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv2d(self.hidden_dim // 8, self.hidden_dim // 8, kernel_size=(3, 1), stride=(1, 1), padding=(1, 0)), # (Batch, hidden_dim // 8, Seq_len / 4, Num_windows)
-                # nn.LeakyReLU(negative_slope=0.2),
             )
             self.enc_conv3 = nn.Sequential(
-                nn.Conv2d(self.hidden_dim // 8, self.hidden_dim // 4, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)), # (Batch, hidden_dim // 4, Seq_len / 8, Num_windows)
+                nn.Conv2d(self.hidden_dim // 4, self.hidden_dim // 2, kernel_size=(3, 1), stride=(2, 1), padding=(1, 0)), # (Batch, hidden_dim // 2, Seq_len / 8, Num_windows)
                 nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv2d(self.hidden_dim // 4, self.hidden_dim // 4, kernel_size=(5, 1), stride=(1, 1), padding=(2, 0)), # (Batch, hidden_dim // 4, Seq_len / 8, Num_windows)
-                # nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv2d(self.hidden_dim // 4, self.hidden_dim // 4, kernel_size=(3, 1), stride=(1, 1), padding=(1, 0)), # (Batch, hidden_dim // 4, Seq_len / 8, Num_windows)
-                # nn.LeakyReLU(negative_slope=0.2),
             )
             self.enc_conv4 = nn.Sequential(
-                nn.Conv2d(self.hidden_dim // 4, self.hidden_dim, kernel_size=(6, 1), stride=(1, 1), padding=0), # (Batch, hidden_dim, Seq_len / 48, Num_windows)
+                nn.Conv2d(self.hidden_dim // 2, self.hidden_dim, kernel_size=(6, 1), stride=(1, 1), padding=0), # (Batch, hidden_dim, Seq_len / 48, Num_windows)
                 nn.LeakyReLU(negative_slope=0.2)
             )
         else:
@@ -102,9 +90,9 @@ class LocalModule(nn.Module):
     def forward(self, x):
         x = x.permute(0, 3, 2, 1)  # (Batch, features, Seq_len, Num_windows)
         
-        x = self.enc_conv1(x) # (Batch, hidden_dim // 16, 24, Num_windows)
-        x = self.enc_conv2(x) # (Batch, hidden_dim // 8, 12, Num_windows)
-        x = self.enc_conv3(x) # (Batch, hidden_dim // 4, 6, Num_windows)
+        x = self.enc_conv1(x) # (Batch, hidden_dim // 8, 24, Num_windows)
+        x = self.enc_conv2(x) # (Batch, hidden_dim // 4, 12, Num_windows)
+        x = self.enc_conv3(x) # (Batch, hidden_dim // 2, 6, Num_windows)
         x = self.enc_conv4(x) # (Batch, hidden_dim, 1, Num_windows)
         
         x = x.permute(0, 3, 2, 1)  # (Batch, Num_windows, 1, hidden_dim)
@@ -128,35 +116,27 @@ class GlobalModule(nn.Module):
         
         if self.seq_len == 576:
             self.enc_conv1 = nn.Sequential(
-                nn.Conv1d(self.features, self.hidden_dim // 16, kernel_size=7, stride=3, padding=3), # (Batch, hidden_dim // 16, Seq_len / 3)
+                nn.Conv1d(self.features, self.hidden_dim // 8, kernel_size=7, stride=3, padding=3), # (Batch, hidden_dim // 8, Seq_len / 3)
                 nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv1d(self.hidden_dim // 16, self.hidden_dim // 16, kernel_size=5, stride=1, padding=2), # (Batch, hidden_dim // 16, Seq_len / 3)
-                # nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv1d(self.hidden_dim // 16, self.hidden_dim // 16, kernel_size=3, stride=1, padding=1), # (Batch, hidden_dim // 16, Seq_len / 3)
-                # nn.LeakyReLU(negative_slope=0.2),
-                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 16, Seq_len / 6)
-                #nn.BatchNorm1d(self.hidden_dim // 16)
-            )
-            self.enc_conv2 = nn.Sequential(
-                nn.Conv1d(self.hidden_dim // 16, self.hidden_dim // 8, kernel_size=5, stride=3, padding=2), # (Batch, hidden_dim // 8, Seq_len / 18)
-                nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv1d(self.hidden_dim // 8, self.hidden_dim // 8, kernel_size=3, stride=1, padding=1), # (Batch, hidden_dim // 8, Seq_len / 18)
-                # nn.LeakyReLU(negative_slope=0.2),
-                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 8, Seq_len / 36)
+                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 8, Seq_len / 6)
                 #nn.BatchNorm1d(self.hidden_dim // 8)
             )
-            self.enc_conv3 = nn.Sequential(
-                nn.Conv1d(self.hidden_dim // 8, self.hidden_dim // 4, kernel_size=3, stride=2, padding=1), # (Batch, hidden_dim // 4, Seq_len / 72)
+            self.enc_conv2 = nn.Sequential(
+                nn.Conv1d(self.hidden_dim // 8, self.hidden_dim // 4, kernel_size=5, stride=3, padding=2), # (Batch, hidden_dim // 4, Seq_len / 18)
                 nn.LeakyReLU(negative_slope=0.2),
-                # nn.Conv1d(self.hidden_dim // 4, self.hidden_dim // 4, kernel_size=3, stride=1, padding=1), # (Batch, hidden_dim // 4, Seq_len / 72)
-                # nn.LeakyReLU(negative_slope=0.2),
-                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 4, Seq_len / 144)
+                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 4, Seq_len / 36)
                 #nn.BatchNorm1d(self.hidden_dim // 4)
             )
-            self.enc_conv4 = nn.Sequential(
-                nn.Conv1d(self.hidden_dim // 4, self.hidden_dim, kernel_size=5, stride=2, padding=2), # (Batch, hidden_dim, Seq_len / 288)
+            self.enc_conv3 = nn.Sequential(
+                nn.Conv1d(self.hidden_dim // 4, self.hidden_dim // 2, kernel_size=3, stride=2, padding=1), # (Batch, hidden_dim // 2, Seq_len / 72)
                 nn.LeakyReLU(negative_slope=0.2),
-                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 4, Seq_len / 576)
+                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim // 2, Seq_len / 144)
+                #nn.BatchNorm1d(self.hidden_dim // 2)
+            )
+            self.enc_conv4 = nn.Sequential(
+                nn.Conv1d(self.hidden_dim // 2, self.hidden_dim, kernel_size=5, stride=2, padding=2), # (Batch, hidden_dim, Seq_len / 288)
+                nn.LeakyReLU(negative_slope=0.2),
+                nn.MaxPool1d(kernel_size=2, stride=2),  # (Batch, hidden_dim, Seq_len / 576)
                 #nn.BatchNorm1d(self.hidden_dim)
             )
         else:
@@ -175,9 +155,9 @@ class GlobalModule(nn.Module):
         
         x = x.permute(0, 2, 1)  # (Batch, Features, Seq_len) for Conv1d
         
-        x = self.enc_conv1(x) # (Batch, hidden_dim // 16, 192)
-        x = self.enc_conv2(x) # (Batch, hidden_dim // 8, 32)
-        x = self.enc_conv3(x) # (Batch, hidden_dim // 4, 8)
+        x = self.enc_conv1(x) # (Batch, hidden_dim // 8, 192)
+        x = self.enc_conv2(x) # (Batch, hidden_dim // 4, 32)
+        x = self.enc_conv3(x) # (Batch, hidden_dim // 2, 8)
         x = self.enc_conv4(x) # (Batch, hidden_dim, 2)
         
         x = x.permute(0, 2, 1)  # (Batch, 1, hidden_dim)
