@@ -27,7 +27,7 @@ def process_config(json_file):
 
     # create directories to save experiment results and trained models
     if config['load_dir'] == "default":
-        save_dir = Path("experiments/local-results") / config['exp_name'] / f"batch-{config['batch_size']}"
+        save_dir = Path("experiments") / config['exp_name'] / f"batch-{config['batch_size']}"
     else:
         save_dir = Path(config['load_dir'])
     # specify the saving folder name for this experiment
