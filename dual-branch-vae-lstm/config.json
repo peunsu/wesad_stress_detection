@@ -1,7 +1,7 @@
 {
     "exp_name": "vae-lstm-dual-ma",
     "load_dir": "default",
-    "window_size": 288,
+    "window_size": 576,
     "small_window_size": 48,
     "window_shift": 1,
     "features": 67,
