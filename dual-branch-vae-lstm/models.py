@@ -316,8 +316,6 @@ class VAE_Encoder(nn.Module):
         self.small_seq_len = config['small_window_size']
         self.latent_dim = config['latent_dim']
         
-        #self.fc = nn.Linear(self.latent_dim * 8, self.latent_dim * 4)
-        
         self.fc_mean = nn.Linear(self.latent_dim * 4, self.latent_dim)
         self.fc_log_var = nn.Linear(self.latent_dim * 4, self.latent_dim)
     
@@ -338,14 +336,8 @@ class VAE_Encoder(nn.Module):
         
         combined_z = self.ma(local_z, global_z)  # (Batch, Num_windows, Latent_dim * 4)
         
-        #combined_z = torch.cat([local_z, global_z.repeat(1, local_z.size(1), 1)], dim=-1)  # (Batch, Num_windows, Latent_dim * 8)
-        #combined_z = F.leaky_relu(self.fc(combined_z), negative_slope=0.2)  # (Batch, Num_windows, Latent_dim * 4)
-        
-        #combined_z = local_z  # (Batch, Num_windows, Latent_dim * 4)
-        
         z_mean = self.fc_mean(combined_z)  # (Batch, Num_windows, Latent_dim)
         z_log_var = F.relu(self.fc_log_var(combined_z))  # (Batch, Num_windows, Latent_dim)
-        #z_log_var = torch.clamp(F.relu(self.fc_log_var(combined_z)), min=-10, max=10)  # Use it if KL divergence does not converge
         
         # Reparameterization trick
         std = torch.exp(0.5 * z_log_var) + 1e-2  # (Batch, Num_windows, Latent_dim)
