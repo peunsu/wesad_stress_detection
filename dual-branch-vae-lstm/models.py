@@ -436,7 +436,7 @@ class LSTMModel(nn.Module):
         x, _ = self.lstm3(x)
         return x
 
-class MA_VAE(nn.Module):
+class Dual_Branch_VAE_LSTM(nn.Module):
     def __init__(self, config, beta=1e-8):
         super().__init__()
         self.encoder = VAE_Encoder(config)

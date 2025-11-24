@@ -8,7 +8,7 @@ import torch
 import torch.optim as optim
 
 from data_loader import DataGenerator
-from models import VAE_Encoder, VAE_Decoder, MA, MA_VAE, KLAnnealingHelper, EarlyStopping
+from models import Dual_Branch_VAE_LSTM, KLAnnealingHelper, EarlyStopping
 from utils import process_config, create_dirs, get_args, save_config
 
 # 시드 설정
@@ -101,7 +101,7 @@ def main():
 
     data = DataGenerator(config)
     train_loader, val_loader = data.get_dataloaders()
-    model = MA_VAE(config, beta=1e-8).to(device)
+    model = Dual_Branch_VAE_LSTM(config, beta=1e-8).to(device)
     
     print(model)
     
