@@ -1,5 +1,5 @@
 {
-    "exp_name": "vae-lstm-global-ma",
+    "exp_name": "vae-lstm-dual-ma",
     "load_dir": "default",
     "window_size": 288,
     "small_window_size": 48,

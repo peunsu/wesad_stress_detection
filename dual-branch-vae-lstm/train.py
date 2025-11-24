@@ -108,7 +108,7 @@ def main():
     elif config['exp_name'] == 'vae-lstm-dual-linear':
         model = VAE_LSTM_Linear(config, beta=1e-8).to(device)
         optimizer = optim.Adam(model.parameters(), lr=0.0004, betas=(0.9, 0.95))
-    elif config['exp_name'] == 'vae-lstm-dual-local':
+    elif config['exp_name'] == 'vae-lstm-local-only':
         model = VAE_LSTM_Local(config, beta=1e-8).to(device)
         optimizer = optim.Adam(model.parameters(), lr=0.0004, betas=(0.9, 0.95))
     elif config['exp_name'] == 'ma-vae':
