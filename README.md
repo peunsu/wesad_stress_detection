@@ -12,22 +12,22 @@ $ pip install -r requirements.txt
 
 ```json
 {
-    "exp_name": "vae-lstm-dual-ma", // Options: "vae-lstm-dual-ma", "vae-lstm-dual-linear", "vae-lstm-local-only", "ma-vae"
+    "exp_name": "vae-lstm-dual-ma", // Options: "vae-lstm-dual-ma", "vae-lstm-dual-linear", "vae-lstm-local-only", "ma-vae".
     "load_dir": "default",
-    "window_size": 288, // Window length
-    "small_window_size": 48, // Segment length for each window
-    "window_shift": 1, // Window shift
-    "features": 67, // Number of input features
-    "hidden_dim": 512, // Hidden dimension for Encoder/Decoder
-    "hidden_dim_lstm": 64, // Hidden dimension for LSTM layers
-    "latent_dim": 12, // Latent dimension
-    "batch_size": 512, // Batch size
-    "epochs": 100, // Number of training epochs
-    "patience": 10, // Early stopping patience
-    "grace_period": 25, // KL annealing grace period
-    "annealing_epochs": 25, // KL annealing epochs
-    "seed": 42, // Random seed
-    "TRAIN_VAE": 1 // Set to 1 to train the model, 0 to skip training
+    "window_size": 288, // Window length. Options: 576, 288, 144, 72.
+    "small_window_size": 48, // Segment length for each window. Options: 48, 24.
+    "window_shift": 1, // Window shift.
+    "features": 67, // Number of input features.
+    "hidden_dim": 512, // Hidden dimension for Encoder/Decoder.
+    "hidden_dim_lstm": 64, // Hidden dimension for LSTM layers.
+    "latent_dim": 12, // Latent dimension.
+    "batch_size": 512, // Batch size.
+    "epochs": 100, // Number of training epochs.
+    "patience": 10, // Early stopping patience.
+    "grace_period": 25, // KL annealing grace period.
+    "annealing_epochs": 25, // KL annealing epochs.
+    "seed": 42, // Random seed.
+    "TRAIN_VAE": 1 // Set to 1 to train the model, 0 to skip training.
 }
 ```
 
