@@ -436,55 +436,12 @@ class LSTMModel(nn.Module):
         x, _ = self.lstm3(x)
         return x
 
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model: int, max_len: int = 5000):
-        super(PositionalEncoding, self).__init__()
-        
-        position = torch.arange(max_len).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2) * (-torch.log(torch.tensor(10000.0)) / d_model))
-        
-        pe = torch.zeros(1, max_len, d_model)
-        pe[0, :, 0::2] = torch.sin(position * div_term)
-        pe[0, :, 1::2] = torch.cos(position * div_term)
-        
-        self.register_buffer('pe', pe)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x + self.pe[:, :x.size(1), :]
-
-class TransformerPredictor(nn.Module):
-    def __init__(self, config):
-        super(TransformerPredictor, self).__init__()
-        self.config = config
-        self.latent_dim = config['latent_dim']
-        
-        self.pos_encoder = PositionalEncoding(self.latent_dim)
-
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=self.latent_dim, 
-            nhead=self.latent_dim // 4, 
-            dim_feedforward=self.latent_dim * 4,
-            batch_first=True
-        )
-        
-        self.transformer_encoder = nn.TransformerEncoder(
-            encoder_layer,
-            num_layers=3
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.pos_encoder(x)
-        output = self.transformer_encoder(x)
-        
-        return output
-
 class MA_VAE(nn.Module):
     def __init__(self, config, beta=1e-8):
         super().__init__()
         self.encoder = VAE_Encoder(config)
         self.decoder = VAE_Decoder(config)
         self.lstm = LSTMModel(config)
-        #self.transformer = TransformerPredictor(config)
         
         self.config = config
         self.beta = beta

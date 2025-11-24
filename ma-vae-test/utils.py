@@ -31,7 +31,7 @@ def process_config(json_file):
     else:
         save_dir = Path(config['load_dir'])
     # specify the saving folder name for this experiment
-    save_name = f'{config["exp_name"]}-{config["window_size"]}-{config["window_shift"]}-{config["latent_dim"]}'
+    save_name = f'{config["exp_name"]}-{config["window_size"]}-{config["small_window_size"]}-{config["window_shift"]}-{config["latent_dim"]}'
     config['summary_dir'] = str(save_dir / save_name / "summary/")
     config['result_dir'] = str(save_dir / save_name / "result/")
     config['checkpoint_dir'] = str(save_dir / save_name / "checkpoint/")
