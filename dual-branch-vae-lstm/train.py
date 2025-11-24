@@ -104,17 +104,18 @@ def main():
     
     if config['exp_name'] == 'vae-lstm-dual-ma':
         model = VAE_LSTM_MA(config, beta=1e-8).to(device)
+        optimizer = optim.Adam(model.parameters(), lr=0.0004, betas=(0.9, 0.95))
     elif config['exp_name'] == 'vae-lstm-dual-linear':
         model = VAE_LSTM_Linear(config, beta=1e-8).to(device)
+        optimizer = optim.Adam(model.parameters(), lr=0.0004, betas=(0.9, 0.95))
     elif config['exp_name'] == 'vae-lstm-local-only':
         model = VAE_LSTM_Local(config, beta=1e-8).to(device)
+        optimizer = optim.Adam(model.parameters(), lr=0.0004, betas=(0.9, 0.95))
     elif config['exp_name'] == 'ma-vae':
         model = MA_VAE(config, beta=1e-8).to(device)
+        optimizer = optim.Adam(model.parameters(), amsgrad=True)
     else:
         raise ValueError(f"Unknown experiment name: {config['exp_name']}")
-    
-    # optimizer = optim.Adam(model.parameters(), amsgrad=True)
-    optimizer = optim.Adam(model.parameters(), lr=0.0004, betas=(0.9, 0.95))
     
     print(model)
     print(optimizer)
