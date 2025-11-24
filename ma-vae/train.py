@@ -8,7 +8,7 @@ import torch
 import torch.optim as optim
 
 from data_loader import DataGenerator
-from models import VAE_Encoder, VAE_Decoder, MA, MA_VAE, KLAnnealingHelper, EarlyStopping
+from models import MA_VAE, KLAnnealingHelper, EarlyStopping
 from utils import process_config, create_dirs, get_args, save_config
 
 # 시드 설정
@@ -106,10 +106,7 @@ def main():
     train_loader, val_loader = data.get_dataloaders()
 
     # 모델 인스턴스화
-    encoder = VAE_Encoder(config).to(device)
-    decoder = VAE_Decoder(config).to(device)
-    ma = MA(config).to(device)
-    model = MA_VAE(encoder, decoder, ma, beta=1e-8).to(device)
+    model = MA_VAE(config, beta=1e-8).to(device)
     
     # 옵티마이저
     optimizer = optim.Adam(model.parameters(), amsgrad=True)
@@ -138,10 +135,6 @@ def main():
     else:
         if not load_latest_vae_checkpoint(model, optimizer, device, config['checkpoint_dir']):
             raise RuntimeError("VAE training disabled and no checkpoint found to load.")
-
-    # --------------------------------------------------------------------------------
-    # 5. 훈련 실행
-    # --------------------------------------------------------------------------------
 
     print(f"Starting training on device: {device}")
     history = {'loss': [], 'recon_loss': [], 'kl_loss': [], 'val_recon_loss': []}

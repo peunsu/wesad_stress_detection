@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class KLAnnealingHelper:
+    """KL Annealing Implmementation"""
     def __init__(self, annealing_epochs=30, type="normal", grace_period=20, start=0.0001, end=0.1, lower_initial_betas=False):
         self.annealing_epochs = annealing_epochs
         self.type = type
@@ -45,7 +46,44 @@ class KLAnnealingHelper:
         beta_value = self.get_beta(epoch)
         print(f"KL Annealing Type: {self.type}, Beta value: {beta_value:.10f}, cycle epoch {int(shifted_epochs) % self.annealing_epochs}")
 
+class EarlyStopping:
+    """Early Stopping Implementation"""
+    def __init__(self, monitor='val_recon_loss', mode='min', patience=250, restore_best_weights=True, verbose=1):
+        self.monitor = monitor
+        self.mode = mode
+        self.patience = patience
+        self.restore_best_weights = restore_best_weights
+        self.verbose = verbose
+
+        self.best_loss = float('inf') if mode == 'min' else float('-inf')
+        self.epochs_no_improve = 0
+        self.stop_training = False
+        self.best_weights = None
+        
+    def __call__(self, current_loss, model, epoch):
+        if self.mode == 'min':
+            if current_loss < self.best_loss:
+                self.best_loss = current_loss
+                self.epochs_no_improve = 0
+                if self.restore_best_weights:
+                    self.best_weights = model.state_dict()
+                if self.verbose:
+                    print(f"Epoch {epoch+1}: {self.monitor} improved to {self.best_loss:.6f}. Saving best weights.")
+            else:
+                self.epochs_no_improve += 1
+                if self.verbose:
+                    print(f"Epoch {epoch+1}: {self.monitor} did not improve. Best loss: {self.best_loss:.6f}. No. of epochs since last improvement: {self.epochs_no_improve}")
+                if self.epochs_no_improve >= self.patience:
+                    self.stop_training = True
+                    if self.verbose:
+                        print(f"Early stopping at epoch {epoch+1}.")
+                    if self.restore_best_weights and self.best_weights is not None:
+                        model.load_state_dict(self.best_weights)
+                        if self.verbose:
+                            print("Restoring best model weights.")
+
 def depth_to_space_2d(x, block_size):
+    """Rearranges data from depth into blocks of spatial data."""
     b, c, h, w = x.shape
     new_c = c // (block_size ** 2)
     x = x.view(b, new_c, block_size, block_size, h, w)
@@ -54,6 +92,7 @@ def depth_to_space_2d(x, block_size):
     return x.view(b, new_c, h * block_size, w * block_size)    
 
 class LocalModule(nn.Module):
+    """Dual-branch VAE Local Module"""
     def __init__(self, config):
         super().__init__()
         self.seq_len = config['window_size']
@@ -125,6 +164,7 @@ class LocalModule(nn.Module):
         return x
 
 class GlobalModule(nn.Module):
+    """Dual-branch VAE Global Module"""
     def __init__(self, config):
         super().__init__()
         self.seq_len = config['window_size']
@@ -132,9 +172,6 @@ class GlobalModule(nn.Module):
         self.features = config['features']
         self.hidden_dim = config['hidden_dim']
         self.latent_dim = config['latent_dim']
-        
-        # self.bilstm1 = nn.LSTM(self.features, self.hidden_dim // 4, batch_first=True, bidirectional=True)
-        # self.bilstm2 = nn.LSTM(self.hidden_dim // 2, self.hidden_dim // 8, batch_first=True, bidirectional=True)
         
         if self.seq_len == 72:
             self.enc_conv1 = nn.Sequential(
@@ -234,12 +271,7 @@ class GlobalModule(nn.Module):
             nn.LeakyReLU(negative_slope=0.2)
         )
 
-    def forward(self, x):
-        # h, _ = self.bilstm1(x)  # (Batch, Seq_len, hidden_dim)
-        # h, _ = self.bilstm2(h)  # (Batch, Seq_len, hidden_dim // 4)
-        
-        # x = F.leaky_relu(self.enc_fc(h), negative_slope=0.2)  # (Batch, Num_windows, Latent_dim * 4)
-        
+    def forward(self, x):        
         x = x.permute(0, 2, 1)  # (Batch, Features, Seq_len) for Conv1d
         
         x = self.enc_conv1(x) # (Batch, hidden_dim // 8, 192)
@@ -255,6 +287,7 @@ class GlobalModule(nn.Module):
         return x
 
 class MA(nn.Module):
+    """Dual-branch VAE Multi-Head Attention Module"""
     def __init__(self, config):
         super().__init__()
         self.latent_dim = config['latent_dim']
@@ -273,6 +306,7 @@ class MA(nn.Module):
         return A
 
 class VAE_Encoder(nn.Module):
+    """Dual-branch VAE Encoder with Multi-Head Attention"""
     def __init__(self, config):
         super().__init__()
         self.local_module = LocalModule(config)
@@ -312,6 +346,85 @@ class VAE_Encoder(nn.Module):
         z_mean = self.fc_mean(combined_z)  # (Batch, Num_windows, Latent_dim)
         z_log_var = F.relu(self.fc_log_var(combined_z))  # (Batch, Num_windows, Latent_dim)
         #z_log_var = torch.clamp(F.relu(self.fc_log_var(combined_z)), min=-10, max=10)  # Use it if KL divergence does not converge
+        
+        # Reparameterization trick
+        std = torch.exp(0.5 * z_log_var) + 1e-2  # (Batch, Num_windows, Latent_dim)
+        eps = torch.randn_like(std)
+        z = z_mean + eps * std  # (Batch, Num_windows, Latent_dim)
+
+        return z_mean, z_log_var, z
+    
+class VAE_Encoder_Linear(nn.Module):
+    """Dual-branch VAE Encoder with Linear Combination"""
+    def __init__(self, config):
+        super().__init__()
+        self.local_module = LocalModule(config)
+        self.global_module = GlobalModule(config)
+        
+        self.small_seq_len = config['small_window_size']
+        self.latent_dim = config['latent_dim']
+        
+        self.fc = nn.Linear(self.latent_dim * 8, self.latent_dim * 4)
+        
+        self.fc_mean = nn.Linear(self.latent_dim * 4, self.latent_dim)
+        self.fc_log_var = nn.Linear(self.latent_dim * 4, self.latent_dim)
+    
+    def cut_window(self, x):
+        windows = []
+        for start in range(0, x.size(1), self.small_seq_len):
+            end = start + self.small_seq_len
+            if end <= x.size(1):
+                windows.append(x[:, start:end, :])
+        windows = torch.stack(windows, dim=1)  # (Batch, Num_windows, small_window_size, Features)
+        return windows
+
+    def forward(self, x):
+        x_wins = self.cut_window(x)  # (Batch, Num_windows, small_window_size, Features)
+        
+        local_z = self.local_module(x_wins)  # (Batch, Num_windows, Latent_dim * 4)
+        global_z = self.global_module(x)  # (Batch, 1, Latent_dim * 4)
+        
+        combined_z = torch.cat([local_z, global_z.repeat(1, local_z.size(1), 1)], dim=-1)  # (Batch, Num_windows, Latent_dim * 8)
+        combined_z = F.leaky_relu(self.fc(combined_z), negative_slope=0.2)  # (Batch, Num_windows, Latent_dim * 4)
+        
+        z_mean = self.fc_mean(combined_z)  # (Batch, Num_windows, Latent_dim)
+        z_log_var = torch.clamp(F.relu(self.fc_log_var(combined_z)), min=-10, max=10)  # Use it if KL divergence does not converge
+        
+        # Reparameterization trick
+        std = torch.exp(0.5 * z_log_var) + 1e-2  # (Batch, Num_windows, Latent_dim)
+        eps = torch.randn_like(std)
+        z = z_mean + eps * std  # (Batch, Num_windows, Latent_dim)
+
+        return z_mean, z_log_var, z
+
+class VAE_Encoder_Local(nn.Module):
+    """VAE Encoder with Local Module Only"""
+    def __init__(self, config):
+        super().__init__()
+        self.local_module = LocalModule(config)
+        
+        self.small_seq_len = config['small_window_size']
+        self.latent_dim = config['latent_dim']
+        
+        self.fc_mean = nn.Linear(self.latent_dim * 4, self.latent_dim)
+        self.fc_log_var = nn.Linear(self.latent_dim * 4, self.latent_dim)
+    
+    def cut_window(self, x):
+        windows = []
+        for start in range(0, x.size(1), self.small_seq_len):
+            end = start + self.small_seq_len
+            if end <= x.size(1):
+                windows.append(x[:, start:end, :])
+        windows = torch.stack(windows, dim=1)  # (Batch, Num_windows, small_window_size, Features)
+        return windows
+
+    def forward(self, x):
+        x_wins = self.cut_window(x)  # (Batch, Num_windows, small_window_size, Features)
+        
+        local_z = self.local_module(x_wins)  # (Batch, Num_windows, Latent_dim * 4)
+        
+        z_mean = self.fc_mean(local_z)  # (Batch, Num_windows, Latent_dim)
+        z_log_var = torch.clamp(F.relu(self.fc_log_var(local_z)), min=-10, max=10)  # Use it if KL divergence does not converge
         
         # Reparameterization trick
         std = torch.exp(0.5 * z_log_var) + 1e-2  # (Batch, Num_windows, Latent_dim)
@@ -436,7 +549,8 @@ class LSTMModel(nn.Module):
         x, _ = self.lstm3(x)
         return x
 
-class Dual_Branch_VAE_LSTM(nn.Module):
+class VAE_LSTM_MA(nn.Module):
+    """VAE-LSTM model with Multi-Head Attention Encoder"""
     def __init__(self, config, beta=1e-8):
         super().__init__()
         self.encoder = VAE_Encoder(config)
@@ -501,37 +615,294 @@ class Dual_Branch_VAE_LSTM(nn.Module):
         
         return Xhat, z_mean, z_log_var, z
 
-class EarlyStopping:
-    def __init__(self, monitor='val_recon_loss', mode='min', patience=250, restore_best_weights=True, verbose=1):
-        self.monitor = monitor
-        self.mode = mode
-        self.patience = patience
-        self.restore_best_weights = restore_best_weights
-        self.verbose = verbose
-
-        self.best_loss = float('inf') if mode == 'min' else float('-inf')
-        self.epochs_no_improve = 0
-        self.stop_training = False
-        self.best_weights = None
+class VAE_LSTM_Linear(nn.Module):
+    """VAE-LSTM model with Linear Combination Encoder"""
+    def __init__(self, config, beta=1e-8):
+        super().__init__()
+        self.encoder = VAE_Encoder_Linear(config)
+        self.decoder = VAE_Decoder(config)
+        self.lstm = LSTMModel(config)
         
-    def __call__(self, current_loss, model, epoch):
-        if self.mode == 'min':
-            if current_loss < self.best_loss:
-                self.best_loss = current_loss
-                self.epochs_no_improve = 0
-                if self.restore_best_weights:
-                    self.best_weights = model.state_dict()
-                if self.verbose:
-                    print(f"Epoch {epoch+1}: {self.monitor} improved to {self.best_loss:.6f}. Saving best weights.")
-            else:
-                self.epochs_no_improve += 1
-                if self.verbose:
-                    print(f"Epoch {epoch+1}: {self.monitor} did not improve. Best loss: {self.best_loss:.6f}. No. of epochs since last improvement: {self.epochs_no_improve}")
-                if self.epochs_no_improve >= self.patience:
-                    self.stop_training = True
-                    if self.verbose:
-                        print(f"Early stopping at epoch {epoch+1}.")
-                    if self.restore_best_weights and self.best_weights is not None:
-                        model.load_state_dict(self.best_weights)
-                        if self.verbose:
-                            print("Restoring best model weights.")
+        self.config = config
+        self.beta = beta
+        
+    def loss_fn(self, X, Xhat, z_mean, z_log_var):
+        recon_loss = torch.mean(
+            torch.sum((X - Xhat).pow(2), dim=[2, 3])
+        )
+        kl_loss = 0.5 * torch.mean(
+            torch.sum(z_mean.pow(2), dim=1) +
+            torch.sum(z_log_var.exp(), dim=1) -
+            torch.sum(z_log_var, dim=1) -
+            self.config['latent_dim']
+        )
+        return recon_loss, kl_loss
+
+    def training_step(self, X, optimizer, beta):
+        self.train()
+        optimizer.zero_grad()
+
+        # X shape: (Batch, Seq_len, Features)
+        z_mean, z_log_var, z = self.encoder(X)
+        z_pred = self.lstm(z[:, :-1, :])  # Predict next latent vector
+        Xhat = self.decoder(z_pred)
+        
+        X = X.view(Xhat.size(0), -1, Xhat.size(2), Xhat.size(3))
+        X = X[:, 1:, :, :]  # Align X with the number of windows
+        
+        recon_loss_batch, KL_loss_batch = self.loss_fn(X, Xhat, z_mean, z_log_var)
+        total_loss_batch = recon_loss_batch + beta * KL_loss_batch
+        
+        total_loss_batch.backward()
+        optimizer.step()
+
+        return total_loss_batch.item(), recon_loss_batch.item(), KL_loss_batch.item()
+    
+    def validation_step(self, X, beta):
+        self.eval()
+        
+        with torch.no_grad():
+            z_mean, z_log_var, z = self.encoder(X)
+            z_pred = self.lstm(z[:, :-1, :])  # Predict next latent vector
+            Xhat = self.decoder(z_pred)
+            
+            X = X.view(Xhat.size(0), -1, Xhat.size(2), Xhat.size(3))
+            X = X[:, 1:, :, :]  # Align X with the number of windows
+            
+            recon_loss_batch, KL_loss_batch = self.loss_fn(X, Xhat, z_mean, z_log_var)
+            total_loss_batch = recon_loss_batch + beta * KL_loss_batch
+
+            return total_loss_batch.item(), recon_loss_batch.item(), KL_loss_batch.item()
+
+    def forward(self, X):
+        z_mean, z_log_var, z = self.encoder(X)
+        z_pred = self.lstm(z[:, :-1, :])  # Predict next latent vector
+        Xhat = self.decoder(z_pred)
+        
+        return Xhat, z_mean, z_log_var, z
+
+class VAE_LSTM_Local(nn.Module):
+    """VAE-LSTM model with Local Module Only Encoder"""
+    def __init__(self, config, beta=1e-8):
+        super().__init__()
+        self.encoder = VAE_Encoder_Local(config)
+        self.decoder = VAE_Decoder(config)
+        self.lstm = LSTMModel(config)
+        
+        self.config = config
+        self.beta = beta
+        
+    def loss_fn(self, X, Xhat, z_mean, z_log_var):
+        recon_loss = torch.mean(
+            torch.sum((X - Xhat).pow(2), dim=[2, 3])
+        )
+        kl_loss = 0.5 * torch.mean(
+            torch.sum(z_mean.pow(2), dim=1) +
+            torch.sum(z_log_var.exp(), dim=1) -
+            torch.sum(z_log_var, dim=1) -
+            self.config['latent_dim']
+        )
+        return recon_loss, kl_loss
+
+    def training_step(self, X, optimizer, beta):
+        self.train()
+        optimizer.zero_grad()
+
+        # X shape: (Batch, Seq_len, Features)
+        z_mean, z_log_var, z = self.encoder(X)
+        z_pred = self.lstm(z[:, :-1, :])  # Predict next latent vector
+        Xhat = self.decoder(z_pred)
+        
+        X = X.view(Xhat.size(0), -1, Xhat.size(2), Xhat.size(3))
+        X = X[:, 1:, :, :]  # Align X with the number of windows
+        
+        recon_loss_batch, KL_loss_batch = self.loss_fn(X, Xhat, z_mean, z_log_var)
+        total_loss_batch = recon_loss_batch + beta * KL_loss_batch
+        
+        total_loss_batch.backward()
+        optimizer.step()
+
+        return total_loss_batch.item(), recon_loss_batch.item(), KL_loss_batch.item()
+    
+    def validation_step(self, X, beta):
+        self.eval()
+        
+        with torch.no_grad():
+            z_mean, z_log_var, z = self.encoder(X)
+            z_pred = self.lstm(z[:, :-1, :])  # Predict next latent vector
+            Xhat = self.decoder(z_pred)
+            
+            X = X.view(Xhat.size(0), -1, Xhat.size(2), Xhat.size(3))
+            X = X[:, 1:, :, :]  # Align X with the number of windows
+            
+            recon_loss_batch, KL_loss_batch = self.loss_fn(X, Xhat, z_mean, z_log_var)
+            total_loss_batch = recon_loss_batch + beta * KL_loss_batch
+
+            return total_loss_batch.item(), recon_loss_batch.item(), KL_loss_batch.item()
+
+    def forward(self, X):
+        z_mean, z_log_var, z = self.encoder(X)
+        z_pred = self.lstm(z[:, :-1, :])  # Predict next latent vector
+        Xhat = self.decoder(z_pred)
+        
+        return Xhat, z_mean, z_log_var, z
+
+class MA_VAE_Encoder(nn.Module):
+    """MA-VAE Encoder"""
+    def __init__(self, config):
+        super().__init__()
+        self.seq_len = config['window_size']
+        self.features = config['features']
+        self.latent_dim = config['latent_dim']
+        
+        self.bilstm1 = nn.LSTM(self.features, 512, bidirectional=True, batch_first=True)
+        self.bilstm2 = nn.LSTM(512 * 2, 256, bidirectional=True, batch_first=True) # 512 * 2 (양방향)
+
+        self.z_mean_layer = nn.Linear(256 * 2, self.latent_dim)
+        self.z_log_var_layer = nn.Linear(256 * 2, self.latent_dim)
+
+    def forward(self, x):
+        # x shape: (Batch, Seq_len, Features)
+        
+        if self.training:
+            x = x + torch.randn_like(x) * 0.01
+
+        bilstm_out, (h_n, c_n) = self.bilstm1(x)
+        bilstm_out, (h_n, c_n) = self.bilstm2(bilstm_out)
+        # bilstm_out shape: (Batch, Seq_len, 256 * 2)
+        
+        z_mean = self.z_mean_layer(bilstm_out)
+        z_log_var = self.z_log_var_layer(bilstm_out)
+        # z_mean, z_log_var shape: (Batch, Seq_len, Latent_dim)
+
+        std = torch.exp(0.5 * z_log_var)
+        eps = torch.randn_like(z_mean) 
+        z = z_mean + std * eps
+        
+        states = bilstm_out
+
+        return z_mean, z_log_var, z, states
+
+class MA_VAE_Decoder(nn.Module):
+    """MA-VAE Decoder"""
+    def __init__(self, config):
+        super().__init__()
+        self.seq_len = config['window_size']
+        self.features = config['features']
+        self.latent_dim = config['latent_dim']
+
+        self.bilstm1 = nn.LSTM(self.latent_dim, 256, bidirectional=True, batch_first=True)
+        self.bilstm2 = nn.LSTM(256 * 2, 512, bidirectional=True, batch_first=True) # 256 * 2 (양방향)
+
+        self.Xhat_mean_layer = nn.Linear(512 * 2, self.features)
+        self.Xhat_log_var_layer = nn.Linear(512 * 2, self.features)
+
+    def forward(self, attention_input):
+        # attention_input shape: (Batch, Seq_len, Latent_dim)
+        
+        bilstm_out, _ = self.bilstm1(attention_input)
+        bilstm_out, _ = self.bilstm2(bilstm_out)
+        # bilstm_out shape: (Batch, Seq_len, 512 * 2)
+
+        Xhat_mean = self.Xhat_mean_layer(bilstm_out)
+        Xhat_log_var = self.Xhat_log_var_layer(bilstm_out)
+        # Xhat_mean, Xhat_log_var shape: (Batch, Seq_len, Features)
+
+        std = torch.exp(0.5 * Xhat_log_var)
+        eps = torch.randn_like(Xhat_mean)
+        Xhat = Xhat_mean + std * eps
+
+        return Xhat_mean, Xhat_log_var, Xhat
+
+class MA_VAE_MA(nn.Module):
+    """MA-VAE Multi-Head Attention Module"""
+    def __init__(self, config):
+        super().__init__()
+        self.seq_len = config['window_size']
+        self.features = config['features']
+        self.latent_dim = config['latent_dim']
+
+        self.q_k_projection = nn.Linear(self.features, 64) 
+
+        self.attention_module = nn.MultiheadAttention(
+            embed_dim=64,  # 64. Q의 차원 (Q_K_projected의 차원)
+            num_heads=8,
+            batch_first=True,
+            kdim=64,       # 64. K의 차원
+            vdim=self.latent_dim,               # latent_dim. V의 입력 차원
+        )
+        
+        self.output_projection = nn.Linear(64, self.latent_dim)
+
+
+    def forward(self, inputs):
+        # inputs: [ma_input (X: features), latent_input (z: latent_dim)]
+        ma_input, latent_input = inputs
+        
+        Q_K_projected = self.q_k_projection(ma_input) # (B, S, 64)
+
+        attn_output_64, _ = self.attention_module(
+            query=Q_K_projected,
+            key=Q_K_projected,
+            value=latent_input
+        )
+        # attn_output_64 shape: (B, S, 64)
+        
+        A = self.output_projection(attn_output_64) # (B, S, latent_dim)
+
+        return A
+
+class MA_VAE(nn.Module):
+    """MA-VAE model"""
+    def __init__(self, config, beta=1e-8):
+        super().__init__()
+        self.encoder = MA_VAE_Encoder(config)
+        self.decoder = MA_VAE_Decoder(config)
+        self.ma = MA_VAE_MA(config)
+        
+        self.beta = beta 
+        
+    def loss_fn(self, X, Xhat, z_mean, z_log_var):
+        recon_loss = torch.mean(
+            torch.sum((X - Xhat).pow(2), dim=[1, 2])
+        )
+        kl_loss = -0.5 * torch.mean(
+            torch.sum(1 + z_log_var - z_mean.pow(2) - z_log_var.exp(), dim=1)
+        )
+        return recon_loss, kl_loss
+
+    def training_step(self, X, optimizer, beta):
+        self.train()
+        optimizer.zero_grad()
+
+        # X shape: (Batch, Seq_len, Features)
+        z_mean, z_log_var, z, states = self.encoder(X)
+        A = self.ma([X, z]) # z 사용
+        Xhat_mean, Xhat_log_var, Xhat = self.decoder(A)
+        
+        recon_loss_batch, KL_loss_batch = self.loss_fn(X, Xhat, z_mean, z_log_var)
+        total_loss_batch = recon_loss_batch + beta * KL_loss_batch
+        
+        total_loss_batch.backward()
+        optimizer.step()
+
+        return total_loss_batch.item(), recon_loss_batch.item(), KL_loss_batch.item()
+    
+    def validation_step(self, X, beta):
+        self.eval()
+        
+        with torch.no_grad():
+            z_mean, z_log_var, z, states = self.encoder(X)
+            A = self.ma([X, z_mean]) # z_mean 사용
+            Xhat_mean, Xhat_log_var, Xhat = self.decoder(A)
+            
+            recon_loss_batch, KL_loss_batch = self.loss_fn(X, Xhat, z_mean, z_log_var)
+            total_loss_batch = recon_loss_batch + beta * KL_loss_batch
+
+            return total_loss_batch.item(), recon_loss_batch.item(), KL_loss_batch.item()
+
+    def forward(self, X):
+        z_mean, z_log_var, z, states = self.encoder(X)
+        A = self.ma([X, z_mean])
+        Xhat_mean, Xhat_log_var, Xhat = self.decoder(A)
+        return Xhat_mean, Xhat_log_var, Xhat, z_mean, z_log_var, z, A

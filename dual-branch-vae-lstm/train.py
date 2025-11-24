@@ -8,7 +8,7 @@ import torch
 import torch.optim as optim
 
 from data_loader import DataGenerator
-from models import Dual_Branch_VAE_LSTM, KLAnnealingHelper, EarlyStopping
+from models import VAE_LSTM_MA, VAE_LSTM_Linear, VAE_LSTM_Local, MA_VAE, KLAnnealingHelper, EarlyStopping
 from utils import process_config, create_dirs, get_args, save_config
 
 # 시드 설정
@@ -101,12 +101,24 @@ def main():
 
     data = DataGenerator(config)
     train_loader, val_loader = data.get_dataloaders()
-    model = Dual_Branch_VAE_LSTM(config, beta=1e-8).to(device)
+    
+    if config['exp_name'] == 'vae-lstm-dual-ma':
+        model = VAE_LSTM_MA(config, beta=1e-8).to(device)
+        optimizer = optim.Adam(model.parameters(), lr=0.0004, betas=(0.9, 0.95))
+    elif config['exp_name'] == 'vae-lstm-dual-linear':
+        model = VAE_LSTM_Linear(config, beta=1e-8).to(device)
+        optimizer = optim.Adam(model.parameters(), lr=0.0004, betas=(0.9, 0.95))
+    elif config['exp_name'] == 'vae-lstm-dual-local':
+        model = VAE_LSTM_Local(config, beta=1e-8).to(device)
+        optimizer = optim.Adam(model.parameters(), lr=0.0004, betas=(0.9, 0.95))
+    elif config['exp_name'] == 'ma-vae':
+        model = MA_VAE(config, beta=1e-8).to(device)
+        optimizer = optim.Adam(model.parameters(), amsgrad=True)
+    else:
+        raise ValueError(f"Unknown experiment name: {config['exp_name']}")
     
     print(model)
-    
-    #optimizer = optim.Adam(model.parameters(), amsgrad=True)
-    optimizer = optim.Adam(model.parameters(), lr=0.0004, betas=(0.9, 0.95))
+    print(optimizer)
 
     es = EarlyStopping(
         monitor='val_recon_loss',
