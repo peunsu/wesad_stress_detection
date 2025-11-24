@@ -1,5 +1,13 @@
 ## WESAD Stress Detection
 ### Dual-Branch VAE-LSTM for Anomaly Detection
+- Create and activate virtual environment, then install dependencies. You can skip this step if you are running in Google Colab or other environments where packages are pre-installed.
+
+```bash
+$ python3 -m venv venv
+$ source venv/bin/activate
+$ pip install -r requirements.txt
+```
+
 - Configure model and training parameters in `/dual-branch-vae-lstm/config.json`
 
 ```json
