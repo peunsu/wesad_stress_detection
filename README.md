@@ -13,11 +13,11 @@ $ pip install -r requirements.txt
 ```json
 {
     "exp_name": "vae-lstm-dual-ma", // Options: "vae-lstm-dual-ma", "vae-lstm-dual-linear", "vae-lstm-local-only", "ma-vae".
-    "load_dir": "default",
+    "load_dir": "experiments", // Options: "default" or "experiments" for WESAD dataset, "experiments_2" for Wearable Device Dataset from Induced Stress and Structured Exercise Sessions.
     "window_size": 288, // Window length. Options: 576, 288, 144, 72.
     "small_window_size": 48, // Segment length for each window. Options: 48, 24.
     "window_shift": 1, // Window shift.
-    "features": 67, // Number of input features.
+    "features": 67, // Number of input features. 67 for WESAD, 19 for Wearable Device Dataset from Induced Stress and Structured Exercise Sessions.
     "hidden_dim": 512, // Hidden dimension for Encoder/Decoder.
     "hidden_dim_lstm": 64, // Hidden dimension for LSTM layers.
     "latent_dim": 12, // Latent dimension.

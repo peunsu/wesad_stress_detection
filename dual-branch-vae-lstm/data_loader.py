@@ -31,7 +31,13 @@ class DataGenerator:
         self.create_datasets()
         
     def load_dataset(self):
-        data_dir = Path('../data')
+        if self.config['load_dir'] == 'default' or self.config['load_dir'] == 'experiments':
+            data_dir = Path('../data')
+        elif self.config['load_dir'] == 'experiments_2':
+            data_dir = Path('../data_2')
+        else:
+            raise ValueError("Invalid load_dir in config.json")
+        
         train_df = pd.read_csv(data_dir / 'train.csv')
         test_df = pd.read_csv(data_dir / 'test.csv')
         
