@@ -51,24 +51,21 @@ class DataGenerator:
         # float 컬럼만 선택
         float_cols = train_df.select_dtypes(include='float').columns
 
-        # 평균과 표준편차 계산
-        # train_m = train_df[float_cols].mean()
-        # train_std = train_df[float_cols].std()
-
-        # # float 컬럼만 정규화
-        # train_df_normalized = train_df.copy()
-        # train_df_normalized[float_cols] = (train_df[float_cols] - train_m) / train_std
-
-        # test_df_normalized = test_df.copy()
-        # test_df_normalized[float_cols] = (test_df[float_cols] - train_m) / train_std
+        # Z-score 정규화
+        train_m = train_df[float_cols].mean()
+        train_std = train_df[float_cols].std()
+        train_df_normalized = train_df.copy()
+        train_df_normalized[float_cols] = (train_df[float_cols] - train_m) / train_std
+        test_df_normalized = test_df.copy()
+        test_df_normalized[float_cols] = (test_df[float_cols] - train_m) / train_std
         
         # Min-Max 정규화
-        train_min = train_df[float_cols].min()
-        train_max = train_df[float_cols].max()
-        train_df_normalized = train_df.copy()
-        train_df_normalized[float_cols] = (train_df[float_cols] - train_min) / (train_max - train_min)
-        test_df_normalized = test_df.copy()
-        test_df_normalized[float_cols] = (test_df[float_cols] - train_min) / (train_max - train_min)
+        # train_min = train_df[float_cols].min()
+        # train_max = train_df[float_cols].max()
+        # train_df_normalized = train_df.copy()
+        # train_df_normalized[float_cols] = (train_df[float_cols] - train_min) / (train_max - train_min)
+        # test_df_normalized = test_df.copy()
+        # test_df_normalized[float_cols] = (test_df[float_cols] - train_min) / (train_max - train_min)
         
         # subject_id별로 그룹화해서 딕셔너리 형태로 저장
         self.data = {

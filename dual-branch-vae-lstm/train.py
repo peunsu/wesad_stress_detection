@@ -132,8 +132,8 @@ def main():
         annealing_epochs=config['annealing_epochs'],
         type="cyclical",
         grace_period=config['grace_period'],
-        start=1e-8,
-        end=1e-2,
+        start=1e-4,
+        end=1e-1,
         lower_initial_betas=False,
     )
     

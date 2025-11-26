@@ -8,7 +8,7 @@
     "hidden_dim": 512,
     "hidden_dim_lstm": 64,
     "latent_dim": 12,
-    "batch_size": 512,
+    "batch_size": 128,
     "epochs": 100,
     "patience": 10,
     "grace_period": 25,
