@@ -35,6 +35,8 @@ class DataGenerator:
             data_dir = Path('../data')
         elif self.config['load_dir'] == 'experiments_2':
             data_dir = Path('../data_2')
+        elif self.config['load_dir'] == 'experiments_3':
+            data_dir = Path('../data_3')
         else:
             raise ValueError("Invalid load_dir in config.json")
         
