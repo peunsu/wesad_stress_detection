@@ -1,8 +1,8 @@
 {
-    "exp_name": "vae-lstm-dual-ma",
+    "exp_name": "vae-lstm-local-only",
     "load_dir": "experiments",
-    "window_size": 144,
-    "small_window_size": 24,
+    "window_size": 576,
+    "small_window_size": 48,
     "window_shift": 1,
     "features": 55,
     "hidden_dim": 512,
