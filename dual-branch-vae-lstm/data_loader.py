@@ -47,15 +47,39 @@ class DataGenerator:
         test_df = test_df.drop(columns=['label'])
         
         # float 컬럼만 선택
-        float_cols = train_df.select_dtypes(include='float').columns
+        #normalize_cols = train_df.select_dtypes(include='float').columns
+        normalize_cols = [
+            'ACC_chest',
+            'ECG_Rate_chest',
+            'EMG_Amplitude_chest',
+            'EDA_Tonic_chest',
+            'EDA_Phasic_chest',
+            'SCR_Height_chest',
+            'SCR_Amplitude_chest',
+            'SCR_RiseTime_chest',
+            'SCR_RecoveryTime_chest',
+            'RSP_Amplitude_chest',
+            'RSP_Rate_chest',
+            'RSP_RVT_chest',
+            'TEMP_chest',
+            'ACC_wrist',
+            'PPG_Rate_wrist',
+            'EDA_Tonic_wrist',
+            'EDA_Phasic_wrist',
+            'SCR_Height_wrist',
+            'SCR_Amplitude_wrist',
+            'SCR_RiseTime_wrist',
+            'SCR_RecoveryTime_wrist',
+            'TEMP_wrist'
+        ]
 
         # Z-score 정규화
-        train_m = train_df[float_cols].mean()
-        train_std = train_df[float_cols].std()
+        train_m = train_df[normalize_cols].mean()
+        train_std = train_df[normalize_cols].std()
         train_df_normalized = train_df.copy()
-        train_df_normalized[float_cols] = (train_df[float_cols] - train_m) / train_std
+        train_df_normalized[normalize_cols] = (train_df[normalize_cols] - train_m) / train_std
         test_df_normalized = test_df.copy()
-        test_df_normalized[float_cols] = (test_df[float_cols] - train_m) / train_std
+        test_df_normalized[normalize_cols] = (test_df[normalize_cols] - train_m) / train_std
         
         # Min-Max 정규화
         # train_min = train_df[float_cols].min()
