@@ -61,7 +61,7 @@ class DataGenerator:
             'RSP_Amplitude_chest',
             'RSP_Rate_chest',
             'RSP_RVT_chest',
-            'TEMP_chest',
+            'Temp_chest',
             'ACC_wrist',
             'PPG_Rate_wrist',
             'EDA_Tonic_wrist',
