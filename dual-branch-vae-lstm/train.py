@@ -194,8 +194,8 @@ def main():
         
         es(avg_val_recon_loss, model, epoch)
 
-        if (epoch + 1) % 10 == 0:
-            save_model(model, optimizer, epoch, history, config)
+        # if (epoch + 1) % 10 == 0:
+        #     save_model(model, optimizer, epoch, history, config)
 
     save_model(model, optimizer, epoch - 1, history, config)
     plot_training_curves(history, config)
