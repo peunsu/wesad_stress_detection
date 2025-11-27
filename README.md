@@ -13,12 +13,12 @@ $ pip install -r requirements.txt
 ```json
 {
     "exp_name": "vae-lstm-dual-ma", // Options: "vae-lstm-dual-ma", "vae-lstm-dual-linear", "vae-lstm-local-only", "ma-vae".
-    "load_dir": "experiments", // Options: "default" or "experiments" for WESAD dataset, "experiments_2" for Wearable Device Dataset from Induced Stress and Structured Exercise Sessions.
-    "fold_id": 0, // Fold ID for cross-validation. Required if load_dir is "default" or "experiments".
+    "load_dir": "experiments", // Options: "default" or "experiments" for WESAD dataset
+    "fold_id": 0, // Fold ID for cross-validation.
     "window_size": 288, // Window length. Options: 576, 288, 144, 72.
     "small_window_size": 48, // Segment length for each window. Options: 48, 24.
     "window_shift": 1, // Window shift.
-    "features": 55, // Number of input features. 55 for WESAD, 14 for Wearable Device Dataset from Induced Stress and Structured Exercise Sessions.
+    "features": 55, // Number of input features. 55 for WESAD dataset.
     "hidden_dim": 512, // Hidden dimension for Encoder/Decoder.
     "hidden_dim_lstm": 64, // Hidden dimension for LSTM layers.
     "latent_dim": 12, // Latent dimension.
@@ -43,6 +43,5 @@ $ python train.py --config config.json
 
 ### References
 - [WESAD Dataset](https://ubi29.informatik.uni-siegen.de/usi/data_wesad.html): Philip Schmidt, Attila Reiss, Robert Duerichen, Claus Marberger and Kristof Van Laerhoven, "Introducing WESAD, a multimodal dataset for Wearable Stress and Affect Detection," ICMI 2018, Boulder, USA, 2018.
-- [Wearable Device Dataset from Induced Stress and Structured Exercise Sessions](https://physionet.org/content/wearable-device-dataset/1.0.1/Wearable_Dataset): A. Hongn, F. Bosch, L. Prado and P. Bonomini, "Wearable Device Dataset from Induced Stress and Structured Exercise Sessions (version 1.0.1)," PhysioNet, 2025. doi: 10.13026/he0v-tf17.
 - [VAE-LSTM for Anomaly Detection](https://github.com/lin-shuyu/VAE-LSTM-for-anomaly-detection): S. Lin, R. Clark, R. Birke, S. Schönborn, N. Trigoni and S. Roberts, "Anomaly Detection for Time Series Using VAE-LSTM Hybrid Model," ICASSP 2020 - 2020 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP), Barcelona, Spain, 2020, pp. 4322-4326, doi: 10.1109/ICASSP40776.2020.9053558.
 - [MA-VAE](https://github.com/lcs-crr/MA-VAE): Correia, Lucas & Goos, Jan-Christoph & Klein, Philipp & Bäck, Thomas & Kononova, Anna, "MA-VAE: Multi-head Attention-based Variational Autoencoder Approach for Anomaly Detection in Multivariate Time-series Applied to Automotive Endurance Powertrain Testing," doi: 10.48550/arXiv.2309.02253.
