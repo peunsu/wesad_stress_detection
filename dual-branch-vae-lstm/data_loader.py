@@ -33,15 +33,19 @@ class DataGenerator:
     def load_dataset(self):
         if self.config['load_dir'] == 'default' or self.config['load_dir'] == 'experiments':
             data_dir = Path('../data')
+            fold_id = self.config.get('fold_id', 0)
+            train_df = pd.read_csv(data_dir / f'train_fold{fold_id}.csv')
+            test_df = pd.read_csv(data_dir / f'test_fold{fold_id}.csv')
         elif self.config['load_dir'] == 'experiments_2':
             data_dir = Path('../data_2')
+            train_df = pd.read_csv(data_dir / 'train.csv')
+            test_df = pd.read_csv(data_dir / 'test.csv')
         elif self.config['load_dir'] == 'experiments_3':
             data_dir = Path('../data_3')
+            train_df = pd.read_csv(data_dir / 'train.csv')
+            test_df = pd.read_csv(data_dir / 'test.csv')
         else:
             raise ValueError("Invalid load_dir in config.json")
-        
-        train_df = pd.read_csv(data_dir / 'train.csv')
-        test_df = pd.read_csv(data_dir / 'test.csv')
         
         # subject_id, label 분리
         train_subjects = train_df.pop('subject_id')

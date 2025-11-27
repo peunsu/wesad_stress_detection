@@ -29,7 +29,7 @@ def process_config(json_file):
     if config['load_dir'] == "default":
         save_dir = Path("experiments") / config['exp_name'] / f"batch-{config['batch_size']}"
     else:
-        save_dir = Path(config['load_dir']) / config['exp_name'] / f"batch-{config['batch_size']}"
+        save_dir = Path(config['load_dir']) / config['exp_name'] / f"fold-{config['fold_id']}-batch-{config['batch_size']}"
     # specify the saving folder name for this experiment
     save_name = f'{config["exp_name"]}-{config["window_size"]}-{config["small_window_size"]}-{config["window_shift"]}-{config["latent_dim"]}'
     config['summary_dir'] = str(save_dir / save_name / "summary/")

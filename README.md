@@ -14,6 +14,7 @@ $ pip install -r requirements.txt
 {
     "exp_name": "vae-lstm-dual-ma", // Options: "vae-lstm-dual-ma", "vae-lstm-dual-linear", "vae-lstm-local-only", "ma-vae".
     "load_dir": "experiments", // Options: "default" or "experiments" for WESAD dataset, "experiments_2" for Wearable Device Dataset from Induced Stress and Structured Exercise Sessions.
+    "fold_id": 0, // Fold ID for cross-validation. Required if load_dir is "default" or "experiments".
     "window_size": 288, // Window length. Options: 576, 288, 144, 72.
     "small_window_size": 48, // Segment length for each window. Options: 48, 24.
     "window_shift": 1, // Window shift.
