@@ -1,7 +1,7 @@
 {
     "n_params": 2250175,
-    "inference_time": 1113.3303170204163,
-    "threshold": 42201.39609375,
+    "inference_time": 4174.08009147644,
+    "threshold": 42239.9925,
     "precision": 0.7493403693931399,
     "recall": 1.0,
     "accuracy": 0.8781056806252188,
