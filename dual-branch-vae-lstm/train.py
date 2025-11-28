@@ -1,53 +1,29 @@
 import numpy as np
-import random
 import matplotlib.pyplot as plt
-from tqdm import tqdm
-from pathlib import Path
-
 import torch
 import torch.optim as optim
+from tqdm import tqdm
 
 from data_loader import DataGenerator
-from models import VAE_LSTM_MA, VAE_LSTM_Linear, VAE_LSTM_Local, MA_VAE, KLAnnealingHelper, EarlyStopping
-from utils import process_config, create_dirs, get_args, save_config
+from models import (
+    VAE_LSTM_MA,
+    VAE_LSTM_Linear,
+    VAE_LSTM_Local,
+    MA_VAE,
+    KLAnnealingHelper,
+    EarlyStopping
+)
+from utils import (
+    process_config,
+    create_dirs,
+    get_args,
+    save_config,
+    set_random_seeds,
+    load_latest_vae_checkpoint,
+    save_model
+)
 
-# 시드 설정
-def set_random_seeds(seed_value):
-    torch.manual_seed(seed_value)
-    np.random.seed(seed_value)
-    random.seed(seed_value)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed_value)
 
-# 학습된 VAE 모델의 pth 파일을 trainer에 로드하는 역할
-def load_latest_vae_checkpoint(model, optimizer, device, checkpoint_dir):
-    if not Path(checkpoint_dir).is_dir():
-        return False
-
-    checkpoint_files = [f for f in Path(checkpoint_dir).iterdir() if f.name.startswith('vae_checkpoint') and f.name.endswith('.pth')]
-    if not checkpoint_files:
-        return False
-
-    latest_checkpoint = max(checkpoint_files, key=lambda x: int(x.name.split('_')[-1].split('.')[0]))
-    checkpoint = torch.load(latest_checkpoint, map_location=device, weights_only=False)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    print(f"Loaded VAE checkpoint: {latest_checkpoint}")
-    return True
-
-def save_model(model, optimizer, epoch, history, config):
-    checkpoint = {
-        'epoch': epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'train_losses': history['loss'],
-        'val_losses': history['val_recon_loss'],
-        'recon_losses': history['recon_loss'],
-        'kl_losses': history['kl_loss']
-    }
-
-    torch.save(checkpoint, f"{config['checkpoint_dir']}/vae_checkpoint_epoch_{epoch+1}.pth")
-    print(f"Model saved at epoch {epoch+1}")
 
 def plot_training_curves(history, config):
     """Plot training curves"""
@@ -194,10 +170,10 @@ def main():
         
         es(avg_val_recon_loss, model, epoch)
 
-        # if (epoch + 1) % 10 == 0:
-        #     save_model(model, optimizer, epoch, history, config)
+        if (epoch + 1) % 10 == 0:
+            save_model(model, optimizer, epoch, history, config)
 
-    save_model(model, optimizer, epoch - 1, history, config)
+    save_model(model, optimizer, epoch, history, config)
     plot_training_curves(history, config)
     
     print("=" * 50)

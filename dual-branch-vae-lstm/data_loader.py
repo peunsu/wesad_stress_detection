@@ -1,6 +1,7 @@
+from pathlib import Path
+
 import pandas as pd
 import torch
-from pathlib import Path
 from torch.utils.data import DataLoader, Dataset, random_split
 
 class VAEDataset(Dataset):
@@ -32,7 +33,7 @@ class DataGenerator:
         
     def load_dataset(self):
         if self.config['load_dir'] == 'default' or self.config['load_dir'] == 'experiments':
-            data_dir = Path('../data')
+            data_dir = Path('data')
             fold_id = self.config.get('fold_id', 0)
             train_df = pd.read_csv(data_dir / f'train_fold{fold_id}.csv')
             test_df = pd.read_csv(data_dir / f'test_fold{fold_id}.csv')

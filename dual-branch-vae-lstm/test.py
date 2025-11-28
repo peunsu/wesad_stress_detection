@@ -1,17 +1,16 @@
 import os
 import json
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
-from tqdm import tqdm
-
 import torch
 import torch.optim as optim
+from tqdm import tqdm
 
 from models import VAE_LSTM_MA, VAE_LSTM_Linear, VAE_LSTM_Local, MA_VAE
 from data_loader import DataGenerator
-from utils import process_config, create_dirs, get_args, save_config
-from train import load_latest_vae_checkpoint, set_random_seeds
+from utils import process_config, create_dirs, get_args, load_latest_vae_checkpoint, set_random_seeds
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -144,7 +143,7 @@ def main():
     train_loader, val_loader, test_loader = data.get_dataloaders(test=True)
     
     if config['load_dir'] == 'default' or config['load_dir'] == 'experiments':
-        data_dir = Path('../data')
+        data_dir = Path('data')
         fold_id = config.get('fold_id', 0)
         test_df = pd.read_csv(data_dir / f'test_fold{fold_id}.csv')
     else:
