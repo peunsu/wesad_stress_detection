@@ -8,14 +8,16 @@ $ source venv/bin/activate
 $ pip install -r requirements.txt
 ```
 
-- Configure model and training parameters in `/dual-branch-vae-lstm/config.json`
+- Open `anomaly-detection.ipynb` to run data preprocessing, model training, and anomaly detection.
+
+- If you want to change model and training parameters, edit `/dual-branch-vae-lstm/config.json`
 
 ```json
 {
     "exp_name": "vae-lstm-dual-ma", // Options: "vae-lstm-dual-ma", "vae-lstm-dual-linear", "vae-lstm-local-only", "ma-vae".
     "load_dir": "experiments", // Options: "default" or "experiments" for WESAD dataset
     "fold_id": 0, // Fold ID for cross-validation.
-    "window_size": 288, // Window length. Options: 576, 288, 144, 72.
+    "window_size": 576, // Window length. Options: 576, 288, 144, 72.
     "small_window_size": 48, // Segment length for each window. Options: 48, 24.
     "window_shift": 1, // Window shift.
     "features": 55, // Number of input features. 55 for WESAD dataset.
@@ -31,15 +33,6 @@ $ pip install -r requirements.txt
     "TRAIN_VAE": 1 // Set to 1 to train the model, 0 to skip training.
 }
 ```
-
-- Train model
-
-```bash
-$ cd dual-branch-vae-lstm
-$ python train.py --config config.json
-```
-
-- Anomaly Detection: Open `anomaly-detection.ipynb` and run all code blocks
 
 ### References
 - [WESAD Dataset](https://ubi29.informatik.uni-siegen.de/usi/data_wesad.html): Philip Schmidt, Attila Reiss, Robert Duerichen, Claus Marberger and Kristof Van Laerhoven, "Introducing WESAD, a multimodal dataset for Wearable Stress and Affect Detection," ICMI 2018, Boulder, USA, 2018.
