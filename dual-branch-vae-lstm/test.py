@@ -7,6 +7,7 @@ import pandas as pd
 import torch
 import torch.optim as optim
 from tqdm import tqdm
+from sklearn.metrics import auc
 
 from models import VAE_LSTM_MA, VAE_LSTM_Linear, VAE_LSTM_Local, MA_VAE
 from data_loader import DataGenerator
@@ -211,15 +212,17 @@ def main():
     recall_aug = np.zeros(n_threshold)
     accuracy_aug = np.zeros(n_threshold)
     F1_aug = np.zeros(n_threshold)
+    n_TP_aug = np.zeros(n_threshold)
+    n_TN_aug = np.zeros(n_threshold)
+    n_FP_aug = np.zeros(n_threshold)
+    n_FN_aug = np.zeros(n_threshold)
 
     for i, threshold in tqdm(enumerate(threshold_list)):
         # augment the detection using the ground truth labels
         # "Unsupervised anomaly detection via variational auto-encoder for seasonal kpis in web applications"
         idx_detection_vae = return_anomaly_idx_by_threshold(test_score, threshold)
         idx_detection_vae_augmented = augment_detected_idx(idx_detection_vae, anomaly_index_vae)
-        precision_aug[i], recall_aug[i], accuracy_aug[i], F1_aug[i], _, _, _, _ = compute_precision_and_recall(idx_detection_vae_augmented, 
-                                                                                        anomaly_index_vae, 
-                                                                                        test_labels_vae)
+        precision_aug[i], recall_aug[i], accuracy_aug[i], F1_aug[i], n_TP_aug[i], n_TN_aug[i], n_FP_aug[i], n_FN_aug[i] = compute_precision_and_recall(idx_detection_vae_augmented, anomaly_index_vae, test_labels_vae)
     
     threshold = threshold_list[np.squeeze(np.argmax(F1_aug))]
 
@@ -229,6 +232,12 @@ def main():
     precision, recall, accuracy, F1, n_TP, n_TN, n_FP, n_FN = compute_precision_and_recall(idx_detection_augmented, 
                                                                         anomaly_index_vae, 
                                                                         test_labels_vae)
+    
+    FPR_aug = n_FP_aug / (n_FP_aug + n_TN_aug)
+    TPR_aug = recall_aug
+    roc_auc = auc(FPR_aug, TPR_aug)
+    
+    print("AUROC: {}".format(roc_auc))
     print("Precision: {}".format(precision))
     print("Recall: {}".format(recall))
     print("Accuracy: {}".format(accuracy))
@@ -242,6 +251,7 @@ def main():
         'n_params': n_params,
         'inference_time': elapsed_time,
         'threshold': threshold,
+        'AUROC': roc_auc,
         'precision': precision,
         'recall': recall,
         'accuracy': accuracy,
