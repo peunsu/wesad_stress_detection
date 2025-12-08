@@ -1,7 +1,9 @@
 {
     "n_params": 2245327,
-    "inference_time": 3269.162700653076,
+    "inference_time": 2980.5693492889404,
+    "average_latency": 34.65778313126675,
     "threshold": 20139.506250000002,
+    "AUROC": 0.99042202276321,
     "precision": 0.9539204756596061,
     "recall": 0.94375,
     "accuracy": 0.9621075670869337,
