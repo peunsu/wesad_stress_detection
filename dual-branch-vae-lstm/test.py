@@ -32,23 +32,24 @@ def evaluate_model(model, device, data_loader):
             start_event.record() # Start timing
             
             reconstruction = model(batch_data)
+            
+            end_event.record() # End timing
+            torch.cuda.synchronize()
+            
             Xhat = reconstruction[0]
-                        
             batch_data = batch_data.view(Xhat.size(0), -1, Xhat.size(2), Xhat.size(3))
             batch_data = batch_data[:, 1:, :, :]  # Align batch_data with the number of windows
             
             recon_loss = torch.sum((batch_data - Xhat).pow(2), dim=[1, 2, 3])
-            
-            end_event.record() # End timing
-            torch.cuda.synchronize()
             
             batch_recons_error.append(recon_loss.cpu().numpy())
             elapsed_times.append(start_event.elapsed_time(end_event))
     
     batch_recons_error = np.concatenate(batch_recons_error, axis=0)
     elapsed_time = sum(elapsed_times)
+    average_latency = elapsed_time / len(data_loader)
     
-    return batch_recons_error, elapsed_time
+    return batch_recons_error, elapsed_time, average_latency
 
 def evaluate_model_ma_vae(model, device, data_loader):
     batch_recons_error = []
@@ -66,20 +67,21 @@ def evaluate_model_ma_vae(model, device, data_loader):
             start_event.record() # Start timing
             
             reconstruction = model(batch_data)
-            Xhat = reconstruction[2]
-            
-            recon_loss = torch.sum((batch_data - Xhat).pow(2), dim=(1,2))
             
             end_event.record() # End timing
             torch.cuda.synchronize()
+            
+            Xhat = reconstruction[2]
+            recon_loss = torch.sum((batch_data - Xhat).pow(2), dim=(1,2))
             
             batch_recons_error.append(recon_loss.cpu().numpy())
             elapsed_times.append(start_event.elapsed_time(end_event))
     
     batch_recons_error = np.concatenate(batch_recons_error, axis=0)
     elapsed_time = sum(elapsed_times)
+    average_latency = elapsed_time / len(data_loader)
     
-    return batch_recons_error, elapsed_time
+    return batch_recons_error, elapsed_time, average_latency
 
 def return_anomaly_idx_by_threshold(test_anomaly_metric, threshold):
     idx_error = np.flatnonzero(test_anomaly_metric > threshold)
@@ -179,10 +181,11 @@ def main():
     
     print('Evaluating on test set...')
     if config['exp_name'] == 'ma-vae':
-        test_score, elapsed_time = evaluate_model_ma_vae(model, device, test_loader)
+        test_score, elapsed_time, average_latency = evaluate_model_ma_vae(model, device, test_loader)
     else:
-        test_score, elapsed_time = evaluate_model(model, device, test_loader)
+        test_score, elapsed_time, average_latency = evaluate_model(model, device, test_loader)
     print(f"Test Set Inference Time: {elapsed_time:.2f} ms")
+    print(f"Average Latency per Sample: {average_latency:.2f} ms")
     
     idx_anomaly_test = test_labels[test_labels == 1].index.to_numpy()
     n_test = len(data.test_set)
@@ -250,6 +253,7 @@ def main():
     result = {
         'n_params': n_params,
         'inference_time': elapsed_time,
+        'average_latency': average_latency,
         'threshold': threshold,
         'AUROC': roc_auc,
         'precision': precision,
