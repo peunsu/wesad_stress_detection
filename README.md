@@ -16,7 +16,7 @@ $ pip install -r requirements.txt
 {
     "exp_name": "vae-lstm-dual-ma", // Options: "vae-lstm-dual-ma", "vae-lstm-dual-linear", "vae-lstm-local-only", "ma-vae".
     "load_dir": "experiments", // Options: "default" or "experiments" for WESAD dataset
-    "fold_id": 0, // Fold ID for cross-validation.
+    "fold_id": 0, // Fold ID for cross-validation. Options: 0, 1, 2.
     "window_size": 576, // Window length. Options: 576, 288, 144, 72.
     "small_window_size": 48, // Segment length for each window. Options: 48, 24.
     "window_shift": 1, // Window shift.
