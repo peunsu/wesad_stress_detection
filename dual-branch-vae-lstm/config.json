@@ -1,5 +1,5 @@
 {
-    "exp_name": "vae-lstm-dual-linear",
+    "exp_name": "vae-lstm-dual-ma",
     "load_dir": "experiments",
     "fold_id": 2,
     "window_size": 576,
