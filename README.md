@@ -1,6 +1,8 @@
 ## WESAD Stress Detection
 ### Dual-Branch VAE-LSTM for Anomaly Detection
-[Final Presentation](https://drive.google.com/file/d/1ZQZt9A0c13jFuT57tDvIOKynx_WTTIfx/view?usp=sharing)
+[Interim Paper](https://github.com/peunsu/wesad_stress_detection/blob/main/static/Interim_Paper.pdf)
+
+[Final Presentation]([https://drive.google.com/file/d/1ZQZt9A0c13jFuT57tDvIOKynx_WTTIfx/view?usp=sharing](https://github.com/peunsu/wesad_stress_detection/blob/main/static/Final_Presentation.pdf))
 
 - Create and activate virtual environment, then install dependencies. You can skip this step if you are running in Google Colab or other environments where packages are pre-installed.
 
