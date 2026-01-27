@@ -1,7 +1,9 @@
 ## Dual-Branch VAE-LSTM for Anomaly Detection
-Dongyun Nam, Eunsu Park, Yerin Park, Julia Irsalina @ Korea University
-
 ![Model Architecture](https://github.com/peunsu/wesad-stress-detection/blob/main/static/Model_architecture_page-0001.jpg)
+
+- Korea University - Advanced Machine Learning (DATA303) - Term Project
+
+- Team E: Dongyun Nam, Eunsu Park, Yerin Park, Julia Irsalina
 
 - [Interim Paper](https://github.com/peunsu/wesad-stress-detection/blob/main/static/Interim_Paper.pdf)
 
